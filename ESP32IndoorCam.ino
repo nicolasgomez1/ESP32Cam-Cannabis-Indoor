@@ -70,6 +70,8 @@ enum SETTINGS_CODES {
 	IDX_WIFI_PWD,
 	IDX_WIFI_STA,
 	IDX_WIFI_RETRY,
+	IDX_WIFI_SLEEP,
+	IDX_WIFI_POWER,
 	IDX_SENSOR_SHUTDOWN_INTERVAL,
 	IDX_TL_START,
 	IDX_TL_STOP,
@@ -123,6 +125,8 @@ struct LogMessage {
 char g_cSSID[16];
 char g_cSSIDPWD[16];
 uint64_t g_nWiFiRetryConnectInterval = 0;
+bool g_bWiFiSleep = true;
+wifi_power_t g_pWiFiPower;
 uint64_t g_nSensorShutdownInterval = 0;
 uint8_t g_nEffectiveStartTimelapse = 0;
 uint8_t g_nEffectiveStopTimelapse = 0;
@@ -338,6 +342,8 @@ void SaveSettings() {
 			pSettingsFile.println(g_cSSID);
 			pSettingsFile.println(g_cSSIDPWD);
 			pSettingsFile.println(g_nWiFiRetryConnectInterval);
+			pSettingsFile.println(g_bWiFiSleep);
+			pSettingsFile.println(g_pWiFiPower);
 
 			pSettingsFile.println(g_nSensorShutdownInterval);
 
@@ -414,7 +420,8 @@ void Thread_WiFiReconnect(void*) {
 		LOGGER(INFO, "Trying to reconnect WiFi...");
 
 		WiFi.begin(g_cSSID, g_cSSIDPWD);
-		WiFi.setSleep(false);
+		WiFi.setTxPower(g_pWiFiPower);
+		WiFi.setSleep(g_bWiFiSleep);
 
 		uint8_t nConnectTrysCount = 0;
 
@@ -558,6 +565,12 @@ void setup() {
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // WIFI RETRY CONNECT INTERVAL
 			g_nWiFiRetryConnectInterval = atoi(cBuffer);
+			///////////////////////////////////////////////////
+			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // WIFI SLEEP
+			g_bWiFiSleep = atoi(cBuffer);
+			///////////////////////////////////////////////////
+			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // WIFI TRANSMIT POWER
+			g_pWiFiPower = (wifi_power_t)atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// INTERVAL FROM LAST WEB CONNECTION TO SHUTDOWN THE SENSOR & FLASH LED
 			g_nSensorShutdownInterval = atoi(cBuffer);
@@ -761,7 +774,8 @@ void setup() {
 
 	if (g_cSSID[0] != '\0') {
 		WiFi.begin(g_cSSID, g_cSSIDPWD);
-		WiFi.setSleep(false);
+		WiFi.setTxPower(g_pWiFiPower);
+		WiFi.setSleep(g_bWiFiSleep);
 
 		uint8_t nConnectTrysCount = 0;
 
@@ -841,6 +855,26 @@ void setup() {
 						g_nWiFiRetryConnectInterval = nNewValue;
 
 						SET_BIT_TO_MASK(nSuccessCodeMask, IDX_WIFI_RETRY);
+					}
+				}
+
+				if (pRequest->hasArg("ws")) {
+					nNewValue = MinutesToTicks(pRequest->arg("ws").toInt());
+
+					if (nNewValue != g_bWiFiSleep) {
+						g_bWiFiSleep = nNewValue;
+
+						SET_BIT_TO_MASK(nSuccessCodeMask, IDX_WIFI_SLEEP);
+					}
+				}
+
+				if (pRequest->hasArg("wp")) {
+					nNewValue = MinutesToTicks(pRequest->arg("wp").toInt());
+
+					if ((wifi_power_t)nNewValue != g_pWiFiPower) {
+						g_pWiFiPower = (wifi_power_t)nNewValue;
+
+						SET_BIT_TO_MASK(nSuccessCodeMask, IDX_WIFI_POWER);
 					}
 				}
 				// =============== SENSOR SHUTDOWN INTERVAL =============== //
