@@ -1,0 +1,1 @@
+.\ffmpeg -r 24 -f image2 -i "capture%05d.jpg" -vcodec libx264 -crf 10 -pix_fmt yuv420p timelapse.mp4
