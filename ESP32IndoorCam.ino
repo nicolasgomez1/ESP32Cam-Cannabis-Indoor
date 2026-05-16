@@ -10,9 +10,7 @@
 //  \______________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \     \
 
-#define FIRMWAREVERSION "V1_0516_1249WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
-
-// TODO: Probar que pasa si pongo el pin de pwd en HIGH, ver si el framebuffer sigue funcionando...
+#define FIRMWAREVERSION "V1_0516_1325WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -806,8 +804,10 @@ void setup() {
 	LOGGER(INFO, "Setting up Web Server...");
 
 	// Static files server
-	// Static serving of the logs folders and all the files inside of them
+	// Static serving of the logs, snapshots & timelapse folders and all the files inside of them
 	g_pWebServer.serveStatic("/logs", SD_MMC, "/logs").setCacheControl("max-age=2592000, immutable");	// Cache it by 1 month
+	g_pWebServer.serveStatic("/snapshots", SD_MMC, "/snapshots").setCacheControl("max-age=2592000, immutable");	// Cache it by 1 month
+	g_pWebServer.serveStatic("/timelapse", SD_MMC, "/timelapse").setCacheControl("max-age=2592000, immutable");	// Cache it by 1 month
 
 	// Request handler
 	g_pWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest* pRequest) {
