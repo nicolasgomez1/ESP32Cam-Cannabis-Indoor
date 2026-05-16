@@ -10,6 +10,13 @@ ESP32Cam Web End Points:
 	- SCS:3 → Se intentará conectar a la nueva Red.		(Esta tiene que tener un check si tiene un guión; de ser así se indicará el nombre de la Red wifi que levanta el esp32 para ser reconfigurado)
 - wfrci
 	- SCS:4 → Se actualizó el Intervalo de intento de reconexión a la red WiFi.
+
+- ws
+	- SCS:5 → Se actualizó el modo de ahorro de energía WiFi.
+- wp
+	- SCS:6 → Se actualizó el Nivel de potencia de transmisión de WiFi.
+
+
 - si
 	- SCS:5 → Se actualizó el Intervalo de Apagado de la Cámara y Flash LED.
 - timelapsestart
@@ -24,7 +31,7 @@ ESP32Cam Web End Points:
 - lbt
 	- SCS:9 → Se actualizó la Intensidad del Flash (Para Timelapse).
 - lbm
-	- SCS:9 → Se actualizó la Intensidad del Flash (Para Monitoreo).
+	- SCS:10 → Se actualizó la Intensidad del Flash (Para Monitoreo).
 
 
 

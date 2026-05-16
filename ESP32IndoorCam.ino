@@ -10,10 +10,9 @@
 //  \______________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \     \
 
-#define FIRMWAREVERSION "V1_0515_0225WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V1_0515_2259WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 // TODO: Poner una varible bool para que el código de la función loop no apague el sensor durante un timelapse...
-// TODO: Poner una variable, que si estoy sacando una snapshot no se pueda transmitir video de monitoreo
 // TODO: Hacer el código del timelapse capturer (los archivos se tienen que llamar capture%05.jpg)
 
 #include <WiFi.h>
@@ -859,7 +858,7 @@ void setup() {
 				}
 
 				if (pRequest->hasArg("ws")) {
-					nNewValue = MinutesToTicks(pRequest->arg("ws").toInt());
+					nNewValue = pRequest->arg("ws").toInt();
 
 					if (nNewValue != g_bWiFiSleep) {
 						g_bWiFiSleep = nNewValue;
@@ -869,7 +868,7 @@ void setup() {
 				}
 
 				if (pRequest->hasArg("wp")) {
-					nNewValue = MinutesToTicks(pRequest->arg("wp").toInt());
+					nNewValue = pRequest->arg("wp").toInt();
 
 					if ((wifi_power_t)nNewValue != g_pWiFiPower) {
 						g_pWiFiPower = (wifi_power_t)nNewValue;
@@ -1375,58 +1374,50 @@ void setup() {
 
 				String strResponse = ":" + String(pTimeNow);
 				// ================================================== Firmware Versioning & OTA Update Progress Section ================================================== //
-				strResponse += ":" + String(FIRMWAREVERSION);
-				strResponse += ":" + String(g_nOTAProgress);
+				strResponse += ":" + String(FIRMWAREVERSION) + ":" + String(g_nOTAProgress);
+				// ================================================== WiFi Section ================================================== //
+				strResponse += ":" + String(g_cSSID) + ":" + String(g_cSSIDPWD) + ":" + String(g_nWiFiRetryConnectInterval) + ":" + String(g_bWiFiSleep) + ":" + String(g_pWiFiPower);
+				// ================================================== Shutdown Camera & Flash LED Section ================================================== //
+				strResponse += ":" + String(TicksToSeconds(g_nSensorShutdownInterval));
 				// TODO: Acá hay que retornar toda la configuración de la SD
-				//				Además... Los valores de hora de inicio de timelapse y apagado de timelapse, tiene que ser convertido.
+				// ================================================== Timelapse Section ================================================== //
+				strResponse += ":" + String(((g_nEffectiveStartTimelapse == 0) ? 24 : g_nEffectiveStartTimelapse)) + ":" + String(((g_nEffectiveStopTimelapse == 0) ? 24 : g_nEffectiveStopTimelapse)) + ":" + String(TicksToMinutes(g_nTimelapseInterval)) + ":" + String(g_nTimelapseLedBrightness);
+				// ================================================== TODO: .... Section ================================================== //
+/*
+			pSettingsFile.println(g_nMonitoringLedBrightness);
 
-				/*
-				pSettingsFile.println(g_cSSID);
-				pSettingsFile.println(g_cSSIDPWD);
-				pSettingsFile.println(g_nWiFiRetryConnectInterval);
-
-				pSettingsFile.println(g_nSensorShutdownInterval);	// TODO: Esto tiene que ser convertido de ticks a segundos
-
-				pSettingsFile.println(g_nEffectiveStartTimelapse);	// TODO: Esto tiene que ser convertido de por el cruce de media noche
-				pSettingsFile.println(g_nEffectiveStopTimelapse);	// TODO: Esto tiene que ser convertido de por el cruce de media noche
-				pSettingsFile.println(g_nTimelapseInterval);	// TODO: Esto tiene que ser convertido de ticks a minutos
-				pSettingsFile.println(g_nTimelapseLedBrightness);
-
-				pSettingsFile.println(g_nMonitoringLedBrightness);
-
-				pSettingsFile.println(g_pCameraConfig.xclk_freq_hz);
-				pSettingsFile.println(g_pCameraConfig.pixel_format);
-				pSettingsFile.println(g_pCameraConfig.frame_size);	// Initial & Timelapse Frame Size
-				pSettingsFile.println(g_pCameraConfig.jpeg_quality);
-				pSettingsFile.println(g_pCameraConfig.fb_count);
-				pSettingsFile.println(g_pCameraConfig.fb_location);
-				pSettingsFile.println(g_pCameraConfig.grab_mode);
-
-				pSettingsFile.println(g_pSensorStatus.framesize);	// Monitoring Frame Size
-				pSettingsFile.println(g_pSensorStatus.brightness);
-				pSettingsFile.println(g_pSensorStatus.contrast);
-				pSettingsFile.println(g_pSensorStatus.saturation);
-				pSettingsFile.println(g_pSensorStatus.sharpness);
-				pSettingsFile.println(g_pSensorStatus.denoise);
-				pSettingsFile.println(g_pSensorStatus.special_effect);
-				pSettingsFile.println(g_pSensorStatus.wb_mode);
-				pSettingsFile.println(g_pSensorStatus.awb);
-				pSettingsFile.println(g_pSensorStatus.awb_gain);
-				pSettingsFile.println(g_pSensorStatus.aec);
-				pSettingsFile.println(g_pSensorStatus.aec2);
-				pSettingsFile.println(g_pSensorStatus.ae_level);
-				pSettingsFile.println(g_pSensorStatus.aec_value);
-				pSettingsFile.println(g_pSensorStatus.agc);
-				pSettingsFile.println(g_pSensorStatus.agc_gain);
-				pSettingsFile.println(g_pSensorStatus.gainceiling);
-				pSettingsFile.println(g_pSensorStatus.bpc);
-				pSettingsFile.println(g_pSensorStatus.wpc);
-				pSettingsFile.println(g_pSensorStatus.raw_gma);
-				pSettingsFile.println(g_pSensorStatus.lenc);
-				pSettingsFile.println(g_pSensorStatus.hmirror);
-				pSettingsFile.println(g_pSensorStatus.vflip);
-				pSettingsFile.println(g_pSensorStatus.dcw);
-				pSettingsFile.println(g_pSensorStatus.colorbar);
+			pSettingsFile.println(g_pCameraConfig.xclk_freq_hz);
+			pSettingsFile.println(g_pCameraConfig.pixel_format);
+			pSettingsFile.println(g_pCameraConfig.frame_size);	// Initial & Timelapse Frame Size
+			pSettingsFile.println(g_pCameraConfig.jpeg_quality);
+			pSettingsFile.println(g_pCameraConfig.fb_count);
+			pSettingsFile.println(g_pCameraConfig.fb_location);
+			pSettingsFile.println(g_pCameraConfig.grab_mode);
+			pSettingsFile.println(g_pSensorStatus.framesize);	// Monitoring Frame Size
+			pSettingsFile.println(g_pSensorStatus.brightness);
+			pSettingsFile.println(g_pSensorStatus.contrast);
+			pSettingsFile.println(g_pSensorStatus.saturation);
+			pSettingsFile.println(g_pSensorStatus.sharpness);		// Line 20
+			pSettingsFile.println(g_pSensorStatus.denoise);
+			pSettingsFile.println(g_pSensorStatus.special_effect);
+			pSettingsFile.println(g_pSensorStatus.wb_mode);
+			pSettingsFile.println(g_pSensorStatus.awb);
+			pSettingsFile.println(g_pSensorStatus.awb_gain);
+			pSettingsFile.println(g_pSensorStatus.aec);
+			pSettingsFile.println(g_pSensorStatus.aec2);
+			pSettingsFile.println(g_pSensorStatus.ae_level);
+			pSettingsFile.println(g_pSensorStatus.aec_value);
+			pSettingsFile.println(g_pSensorStatus.agc);					// Line 30
+			pSettingsFile.println(g_pSensorStatus.agc_gain);
+			pSettingsFile.println(g_pSensorStatus.gainceiling);
+			pSettingsFile.println(g_pSensorStatus.bpc);
+			pSettingsFile.println(g_pSensorStatus.wpc);
+			pSettingsFile.println(g_pSensorStatus.raw_gma);
+			pSettingsFile.println(g_pSensorStatus.lenc);
+			pSettingsFile.println(g_pSensorStatus.hmirror);
+			pSettingsFile.println(g_pSensorStatus.vflip);
+			pSettingsFile.println(g_pSensorStatus.dcw);
+			pSettingsFile.println(g_pSensorStatus.colorbar);
 
 				también enviar el estado actual del flash led ((g_nCurrentLedBrightness > 0) ? "1" : "0")
 				*/
@@ -1437,8 +1428,18 @@ void setup() {
 					data[0] → Current Timestamp
 					data[1] → Firmware Version
 					data[2] → OTA Update Progress
+					data[3] → SSID
+					data[4] → SSID PWD
+					data[5] → Try to reconnect interval
+					data[6] → WiFi Power Save Mode (Sleep)
+					data[7] → Wifi Transmit Power
+					data[8] → Interval to Turn Off Camera Sensor & Flash LED
+					data[9] → Timelapse Start Hour
+					data[10] → Timelapse Stop Hour
+					data[11] → Timelapse Interval
+					data[12] → Timelap Flash LED Brightness
 				*/
-				pRequest->send(200, F("text/plain"), "REFRESH" + strResponse);
+				pRequest->send(200, F("text/plain"), "REFRESH" + strResponse);	// TODO: Retornar una respuesta con header, que el ESP32Cam siempre sea con headers; Eventualmente convertir el ESP32 Controller a headers...
 				return;
 			} else if (pRequest->arg("action") == "list") {	// This returns file list from any directory in the SD Card
 				if (pRequest->hasArg("folder")) {
