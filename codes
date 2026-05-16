@@ -27,11 +27,12 @@ ESP32Cam Web End Points:
 	- SCS:8 → Se actualizó el Intervalo de Timelapse.
 
 
-
+- timelapsecount
+	- SCS:9 → Se actualizó el Contador de Capturas hechas para el Timelapse.
 - lbt
-	- SCS:9 → Se actualizó la Intensidad del Flash (Para Timelapse).
+	- SCS:10 → Se actualizó la Intensidad del Flash (Para Timelapse).
 - lbm
-	- SCS:10 → Se actualizó la Intensidad del Flash (Para Monitoreo).
+	- SCS:11 → Se actualizó la Intensidad del Flash (Para Monitoreo).
 
 
 
@@ -99,6 +100,6 @@ ESP32Cam Web End Points:
 - vflip
 	- SCS:39 → Se actualizó el Volteo Vertical del Sensor.
 - dcw
-	- SCS:40 → Se actualizó el Suavizado Digital de Color del Sensor.
+	- SCS:40 → Se actualizó el Digital Downsample del Sensor.
 - cb
 	- SCS:41 → Se actualizó el Modo de Barras de Color.
