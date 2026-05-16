@@ -1,14 +1,14 @@
-//          _______________________________________________________________________
-//         /                                                                      /\
-//        /  _   __    ____   ______   ____     __     ___    _____   ______     / /\
-//       /  / | / /   /  _/  / ____/  / __ \   / /    /   |  / ___/  / ____/  __/ /
-//      /  /  |/ /    / /   / /      / / / /  / /    / /| |  \__ \  / / __   /\_\/
-//     /  / /|  /   _/ /   / /___   / /_/ /  / /___ / ___ | ___/ / / /_/ /  /_/
-//    /  /_/ |_/   /___/   \____/   \____/  /_____//_/  |_|/____/  \____/    /\
-//   /                           Version 1 (2026)                           / /
-//  /______________________________________________________________________/ /
-//  \______________________________________________________________________\/
-//   \    \    \    \    \    \    \    \    \    \    \    \    \    \     \
+//          ___________________________________________________________________________
+//         /                                                                          /\
+//        /  _   __   ____   ______   ____     __       ___      _____    ______     / /\
+//       /  / | / /  /  _/  / ____/  / __ \   / /      /   |    / ___/   / ____/  __/ /
+//      /  /  |/ /   / /   / /      / / / /  / /      / /| |    \__ \   / / __   /\_\/
+//     /  / /|  /  _/ /   / /___   / /_/ /  / /___   / ___ |   ___/ /  / /_/ /  /_/
+//    /  /_/ |_/  /___/   \____/   \____/  /_____/  /_/  |_|  /____/   \____/    /\
+//   /                             Version 1 (2026)                             / /
+//  /__________________________________________________________________________/ /
+//  \__________________________________________________________________________\/
+//   \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
 #define FIRMWAREVERSION "V1_0516_1325WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
@@ -541,12 +541,12 @@ void setup() {
 
 	g_pCameraConfig.pin_pclk = PCLK_GPIO_NUM;
 
-	LOGGER(INFO, "Pins for Camera Done!");
+	LOGGER(INFO, "Camera Pins Done!");
 
 	ledcAttach(LED_GPIO_NUM, FLASH_LED_FREQUENCY, FLASH_LED_RESOLUTION);
 	ledcWrite(LED_GPIO_NUM, 0);
 
-	LOGGER(INFO, "Pin for Flash LED Done!");
+	LOGGER(INFO, "Flash LED Pin Done!");
 
 	LOGGER(INFO, "Loading Settings & Time...");
 
@@ -1380,7 +1380,7 @@ void setup() {
 
 					return;
 				}
-			} else if (pRequest->arg("action") == "refresh") { // This is for refresh Panel values constantly
+			} else if (pRequest->arg("action") == "settings") { // This is for return all the Settings
 				// ================================================== Current Time Section ================================================== //
 				time_t pTimeNow = time(nullptr);
 
@@ -1456,7 +1456,7 @@ void setup() {
 					data[45] → Sensor Digital Downsample Enable
 					data[46] → Sensor Color Bars (Test Mode) Enable
 				*/
-				pRequest->send(200, F("text/plain"), "REFRESH" + strResponse);
+				pRequest->send(200, F("text/plain"), "SETTINGS" + strResponse);
 				return;
 			} else if (pRequest->arg("action") == "list") {	// This returns file list from any directory in the SD Card
 				if (pRequest->hasArg("folder")) {
