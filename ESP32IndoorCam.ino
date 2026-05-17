@@ -10,7 +10,7 @@
 //  \__________________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V1_0516_1325WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V1_0516_2146WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -108,8 +108,7 @@ enum SETTINGS_CODES {
 	IDX_H_FLIP,
 	IDX_V_FLIP,
 	IDX_DCW_ENABLE,
-	IDX_COLORBAR_ENABLE,
-	IDX_COUNT
+	IDX_COLORBAR_ENABLE
 };
 
 // DO NOT TOUCH IT!
@@ -881,8 +880,8 @@ void setup() {
 					}
 				}
 				// =============== SENSOR SHUTDOWN INTERVAL =============== //
-				if (pRequest->hasArg("si")) {
-					nNewValue = SecondsToTicks(pRequest->arg("si").toInt());
+				if (pRequest->hasArg("ssi")) {
+					nNewValue = SecondsToTicks(pRequest->arg("ssi").toInt());
 
 					if (nNewValue != g_nSensorShutdownInterval) {
 						g_nSensorShutdownInterval = nNewValue;
@@ -1388,7 +1387,7 @@ void setup() {
 				// ================================================== Firmware Versioning & OTA Update Progress Section ================================================== //
 				strResponse += ":" + String(FIRMWAREVERSION) + ":" + String(g_nOTAProgress);
 				// ================================================== WiFi Section ================================================== //
-				strResponse += ":" + String(g_cSSID) + ":" + String(g_cSSIDPWD) + ":" + String(g_nWiFiRetryConnectInterval) + ":" + String(g_bWiFiSleep) + ":" + String(g_pWiFiPower);
+				strResponse += ":" + String(g_cSSID) + ":" + String(g_cSSIDPWD) + ":" + String(TicksToMinutes(g_nWiFiRetryConnectInterval)) + ":" + String(g_bWiFiSleep) + ":" + String(g_pWiFiPower);
 				// ================================================== Shutdown Camera & Flash LED Section ================================================== //
 				strResponse += ":" + String(TicksToSeconds(g_nSensorShutdownInterval));
 				// ================================================== Timelapse Section ================================================== //
