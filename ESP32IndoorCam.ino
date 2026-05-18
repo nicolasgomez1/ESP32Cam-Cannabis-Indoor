@@ -1,16 +1,16 @@
-//          ___________________________________________________________________________
-//         /                                                                          /\
-//        /  _   __   ____   ______   ____     __       ___      _____    ______     / /\
-//       /  / | / /  /  _/  / ____/  / __ \   / /      /   |    / ___/   / ____/  __/ /
-//      /  /  |/ /   / /   / /      / / / /  / /      / /| |    \__ \   / / __   /\_\/
-//     /  / /|  /  _/ /   / /___   / /_/ /  / /___   / ___ |   ___/ /  / /_/ /  /_/
-//    /  /_/ |_/  /___/   \____/   \____/  /_____/  /_/  |_|  /____/   \____/    /\
-//   /                             Version 1 (2026)                             / /
-//  /__________________________________________________________________________/ /
-//  \__________________________________________________________________________\/
-//   \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
+//         ___________________________________________________________________________
+//        /                                                                          /\
+//       /  _   __   ____   ______   ____     __       ___      _____    ______     / /\
+//      /  / | / /  /  _/  / ____/  / __ \   / /      /   |    / ___/   / ____/  __/ /
+//     /  /  |/ /   / /   / /      / / / /  / /      / /| |    \__ \   / / __   /\_\/
+//    /  / /|  /  _/ /   / /___   / /_/ /  / /___   / ___ |   ___/ /  / /_/ /  /_/
+//   /  /_/ |_/  /___/   \____/   \____/  /_____/  /_/  |_|  /____/   \____/    /\
+//  /                             Version 1 (2026)                             / /
+// /__________________________________________________________________________/ /
+// \__________________________________________________________________________\/
+//  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V1_0517_2226WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V1_0518_0544WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -190,8 +190,8 @@ static void ReadFromStream(File& pFile, char* cBuffer, size_t nBufferSize) {
 static inline uint64_t TicksToSeconds(uint64_t nTicks) { return nTicks / 1000; }
 static inline uint64_t TicksToMinutes(uint64_t nTicks) { return nTicks / (1000 * 60); }
 
-static inline uint32_t SecondsToTicks(uint32_t nSeconds) { return nSeconds * 1000; }
-static inline uint32_t MinutesToTicks(uint32_t nMinutes) { return nMinutes * 1000 * 60; }
+static inline uint64_t SecondsToTicks(uint64_t nSeconds) { return nSeconds * 1000; }
+static inline uint64_t MinutesToTicks(uint64_t nMinutes) { return nMinutes * 1000 * 60; }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Executes the provided function (`fn`) with safe, exclusive access to the SD card using the SDMMC peripheral.
 // - Tries to acquire the SD card mutex within 250 ms to ensure thread-safe access across concurrent tasks (e.g., Web Server and Background Logging).
@@ -444,7 +444,7 @@ void Thread_WiFiReconnect(void*) {
 		} else {
 			LOGGER(ERROR, "Max WiFi reconnect attempts reached.");
 		}
-		// TODO: Esto  capaz se puede mejorar...
+
 		vTaskSuspend(NULL);	// Suspends the task until needed again
 	}
 }
@@ -1165,8 +1165,8 @@ void setup() {
 					}
 				}
 				// =============== AUTOMATIC EXPOSURE =============== //
-				if (pRequest->hasArg("ae")) {
-					nNewValue = pRequest->arg("ae").toInt();
+				if (pRequest->hasArg("aec")) {
+					nNewValue = pRequest->arg("aec").toInt();
 
 					if (nNewValue != g_pSensorStatus.aec) {
 						if (pSensorConfig->set_exposure_ctrl(pSensorConfig, nNewValue) == 0) {
@@ -1177,8 +1177,8 @@ void setup() {
 					}
 				}
 				// =============== AUTOMATIC EXPOSURE (NIGHT MODE) =============== //
-				if (pRequest->hasArg("ae2")) {
-					nNewValue = pRequest->arg("ae2").toInt();
+				if (pRequest->hasArg("aec2")) {
+					nNewValue = pRequest->arg("aec2").toInt();
 
 					if (nNewValue != g_pSensorStatus.aec2) {
 						if (pSensorConfig->set_aec2(pSensorConfig, nNewValue) == 0) {
@@ -1361,7 +1361,10 @@ void setup() {
 				}
 				//////////////////////////////////////////////////
 				if (nSuccessCodeMask != 0 || nErrorCodeMask != 0) {	// If have some change, send response to web client and finally save new settings values
-					pRequest->send(200, F("text/plain"), "MSG" + String(nSuccessCodeMask) + ":" + String(nErrorCodeMask));
+					char cBuffer[45];
+					snprintf(cBuffer, sizeof(cBuffer), "MSG%llu:%llu", nSuccessCodeMask, nErrorCodeMask);
+
+					pRequest->send(200, F("text/plain"), cBuffer);
 
 					if (bWiFiChanges) { // Update WiFi values after response the request. in otherwise the message is not sended.
 						strncpy(g_cSSID, pRequest->arg("ssid").c_str(), sizeof(g_cSSID) - 1);
@@ -1386,9 +1389,10 @@ void setup() {
 				}
 			} else if (pRequest->arg("action") == "refresh") { // This is for refresh Panel values
 				// ================================================== Current Time Section ================================================== //
+				char cBuffer[256];
 				time_t pTimeNow = time(nullptr);
 
-				String strResponse = String(pTimeNow);
+				/*String strResponse = String(pTimeNow);
 				// ================================================== Firmware Versioning & OTA Update Progress Section ================================================== //
 				strResponse += ":" + String(FIRMWAREVERSION) + ":" + String(g_nOTAProgress);
 				// ================================================== WiFi Section ================================================== //
@@ -1408,7 +1412,59 @@ void setup() {
 				strResponse += ":" + String(g_pSensorStatus.denoise) + ":" + String(g_pSensorStatus.special_effect) + ":" + String(g_pSensorStatus.wb_mode) + ":" + String(g_pSensorStatus.awb) + ":" + String(g_pSensorStatus.awb_gain);
 				strResponse += ":" + String(g_pSensorStatus.aec) + ":" + String(g_pSensorStatus.aec2) + ":" + String(g_pSensorStatus.ae_level) + ":" + String(g_pSensorStatus.aec_value) + ":" + String(g_pSensorStatus.agc);
 				strResponse += ":" + String(g_pSensorStatus.agc_gain) + ":" + String(g_pSensorStatus.gainceiling) + ":" + String(g_pSensorStatus.bpc) + ":" + String(g_pSensorStatus.wpc) + ":" + String(g_pSensorStatus.raw_gma);
-				strResponse += ":" + String(g_pSensorStatus.lenc) + ":" + String(g_pSensorStatus.hmirror) + ":" + String(g_pSensorStatus.vflip) + ":" + String(g_pSensorStatus.dcw) + ":" + String(g_pSensorStatus.colorbar);
+				strResponse += ":" + String(g_pSensorStatus.lenc) + ":" + String(g_pSensorStatus.hmirror) + ":" + String(g_pSensorStatus.vflip) + ":" + String(g_pSensorStatus.dcw) + ":" + String(g_pSensorStatus.colorbar);*/
+				// ========================================================================================================================= //
+				snprintf(cBuffer, sizeof(cBuffer),
+					// Time : FW : OTA
+					"REFRESH%lu:%s:%u"
+					// WiFi
+					":%s:%s:%llu:%u:%d"
+					// Shutdown
+					":%llu"
+					// Timelapse
+					":%u:%u:%llu:%u:%u"
+					// Monitoring
+					":%u"
+					// Camera config
+					":%d:%d:%d:%d:%u:%d:%d"
+					// Sensor status
+					":%d:%d:%d:%d:%d:%u:%u:%u:%u:%u:%u:%u:%d:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u",
+					// Time : FW : OTA
+					(unsigned long)pTimeNow, FIRMWAREVERSION, (unsigned int)g_nOTAProgress,
+					// WiFi
+					g_cSSID, g_cSSIDPWD,
+					TicksToMinutes(g_nWiFiRetryConnectInterval),
+					(unsigned)g_bWiFiSleep,
+					(int)g_pWiFiPower,
+					// Shutdown
+					TicksToSeconds(g_nSensorShutdownInterval),
+					// Timelapse
+					(g_nEffectiveStartTimelapse == 0) ? (uint8_t)24 : g_nEffectiveStartTimelapse,
+					(g_nEffectiveStopTimelapse  == 0) ? (uint8_t)24 : g_nEffectiveStopTimelapse,
+					TicksToMinutes(g_nTimelapseInterval),
+					g_nTimelapseCounter,
+					g_nTimelapseLedBrightness,
+					// Monitoring
+					g_nMonitoringLedBrightness,
+					// Camera config
+					g_pCameraConfig.xclk_freq_hz,
+					(int)g_pCameraConfig.pixel_format, (int)g_pCameraConfig.frame_size,
+					g_pCameraConfig.jpeg_quality,
+					g_pCameraConfig.fb_count, (int)g_pCameraConfig.fb_location, (int)g_pCameraConfig.grab_mode,
+					// Sensor status
+					(int)g_pSensorStatus.framesize,
+					(int)g_pSensorStatus.brightness, (int)g_pSensorStatus.contrast,
+					(int)g_pSensorStatus.saturation, (int)g_pSensorStatus.sharpness,
+					g_pSensorStatus.denoise, g_pSensorStatus.special_effect, g_pSensorStatus.wb_mode,
+					g_pSensorStatus.awb, g_pSensorStatus.awb_gain,
+					g_pSensorStatus.aec, g_pSensorStatus.aec2,
+					(int)g_pSensorStatus.ae_level,
+					g_pSensorStatus.aec_value,
+					g_pSensorStatus.agc, g_pSensorStatus.agc_gain, g_pSensorStatus.gainceiling,
+					g_pSensorStatus.bpc, g_pSensorStatus.wpc, g_pSensorStatus.raw_gma,
+					g_pSensorStatus.lenc, g_pSensorStatus.hmirror, g_pSensorStatus.vflip,
+					g_pSensorStatus.dcw, g_pSensorStatus.colorbar
+				);
 				// ========================================================================================================================= //
 				/*
 					Response structure example: each data[X] is divided by ':'
@@ -1461,7 +1517,7 @@ void setup() {
 					data[46] → Sensor Color Bars (Test Mode) Enable
 				*/
 
-				pRequest->send(200, F("text/plain"), "REFRESH" + strResponse);
+				pRequest->send(200, F("text/plain"), cBuffer);
 				return;
 			} else if (pRequest->arg("action") == "list") {	// This returns file list from any directory in the SD Card
 				if (pRequest->hasArg("folder")) {
@@ -1541,8 +1597,13 @@ void setup() {
 				AsyncWebServerResponse *pResponse = pRequest->beginResponse_P(200, "image/jpeg", pCameraFrameBuffer->buf, pCameraFrameBuffer->len);
 				pResponse->addHeader(F("Content-Disposition"), F("inline; filename=capture.jpg"));
 				pResponse->addHeader(F("Cache-Control"), F("no-cache, no-store, must-revalidate"));
-				pResponse->addHeader(F("Access-Control-Expose-Headers"), F("X-Flash-Status"));
+				pResponse->addHeader(F("Access-Control-Expose-Headers"), F("X-Flash-Status, X-Timestamp"));
 				pResponse->addHeader(F("X-Flash-Status"), (g_nCurrentLedBrightness > 0) ? "1" : "0");
+
+				char cBuffer[11];
+				snprintf(cBuffer, sizeof(cBuffer), "%lu", (unsigned long)time(nullptr));
+
+				pResponse->addHeader(F("X-Timestamp"), cBuffer);
 
 				pRequest->onDisconnect([pCameraFrameBuffer]() {
 					esp_camera_fb_return(pCameraFrameBuffer);
@@ -1562,7 +1623,6 @@ void setup() {
 				}
 
 				if (!SafeSDAccess([&]() {
-					g_nLastCameraActivity = millis64();
 					g_bTakingSnapshot = true;
 
 					if (digitalRead(PWDN_GPIO_NUM) == HIGH)	// If is off
@@ -1579,7 +1639,7 @@ void setup() {
 						g_nCurrentLedBrightness = g_nTimelapseLedBrightness;
 
 						ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
-						// TODO: Cómo se hace esto, hay que de alguna manera refrescar el valor de g_nLastCameraActivity.
+
 						vTaskDelay(2000 / portTICK_PERIOD_MS);	// 2000ms
 					}
 
@@ -1646,7 +1706,7 @@ void setup() {
 		if (bUpdate) {
 			time_t pTimeNow = time(nullptr);
 			char cBuffer[11];
-			snprintf(cBuffer, sizeof(cBuffer), "%lu", (long)pTimeNow);
+			snprintf(cBuffer, sizeof(cBuffer), "%lu", (unsigned long)pTimeNow);
 			WriteToSDAtomic("/time", cBuffer);	// Write current time to SD Card
 
 			LOGGER(INFO, "Restarting Controller to do a Firmware Update.");
@@ -1732,7 +1792,7 @@ void loop() {
 				nTimestampSaveInterval = nCurrentMillis;
 
 				char cBuffer[11];
-				snprintf(cBuffer, sizeof(cBuffer), "%lu", (long)pTimeNow);
+				snprintf(cBuffer, sizeof(cBuffer), "%lu", (unsigned long)pTimeNow);
 				WriteToSDAtomic("/time", cBuffer);	// Write current time to SD Card
 			}
 		}
@@ -1752,7 +1812,6 @@ void loop() {
 						if (g_bTakingSnapshot) {
 							LOGGER(WARN, "Cannot take Snapshot for Timelapse. Is Taking Snapshot.");
 						} else {
-							g_nLastCameraActivity = millis64();
 							g_bTakingTimelapse = true;
 
 							if (digitalRead(PWDN_GPIO_NUM) == HIGH)	// If is off
@@ -1769,7 +1828,7 @@ void loop() {
 								g_nCurrentLedBrightness = g_nTimelapseLedBrightness;
 
 								ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
-								// TODO: Esto es una mierda. Sería mejor un sistema cómo en el esp32indoorv5. Pero el tiempo de espera no podria ser superior o igual a camera shutdown interval....
+
 								vTaskDelay(2000 / portTICK_PERIOD_MS);	// 2000ms
 							}
 
@@ -1818,7 +1877,7 @@ void loop() {
 		}
 		// ================================================== Auto Sensor Shutdown Section ================================================== //
 		{
-			if ((nCurrentMillis - g_nLastCameraActivity) >= g_nSensorShutdownInterval) {
+			if ((nCurrentMillis - g_nLastCameraActivity) >= g_nSensorShutdownInterval && !g_bTakingSnapshot && !g_bTakingTimelapse) {
 				if (digitalRead(PWDN_GPIO_NUM) == LOW /*If is working*/)
 					digitalWrite(PWDN_GPIO_NUM, HIGH);	// turn it off
 

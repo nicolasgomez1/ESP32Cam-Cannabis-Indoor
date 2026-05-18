@@ -73,12 +73,12 @@ ESP32Cam Web End Points:
 	- SCS:25 → Se actualizó el Modo de Balance de Blancos del Sensor.
 - awbg
 	- SCS:26 → Se actualizó el Modo de Ganancia del Balance de Blancos del Sensor.
-- ae
+- aec
 	- SCS:27 → Se actualizó el Modo de Exposición del Sensor.
-- ae2
-	- SCS:28 → Se actualizó el Perfil de Exposición Automático del Sensor.
+- aec2
+	- SCS:28 → Se actualizó el Perfil de Exposición Automático (Modo Noche) del Sensor.
 - ael
-	- SCS:29 → Se actualizó el Nivel de Exposición Automático del Sensor.
+	- SCS:29 → Se actualizó el Nivel de Ganancia de Exposición Automática del Sensor.
 - aev
 	- SCS:30 → Se actualizó el Nivel de Exposicion Manual del Sensor.
 - agc
