@@ -10,7 +10,7 @@
 //  \__________________________________________________________________________\/
 //   \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V1_0516_2146WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V1_0517_2226WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -149,13 +149,13 @@ TaskHandle_t g_pWiFiReconnect;											// Task handle for WiFi reconnect logic
 SemaphoreHandle_t g_pSDMutex;												// Mutex to synchronize concurrent access to the SD card across tasks
 QueueHandle_t g_pLogQueue;													// Queue handle for asynchronous logging to decouple SD writes from main logic
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-inline void SET_BIT_TO_MASK(uint64_t &nMask, uint8_t nBit) { nMask |= (1ULL << nBit); }
+static inline void SET_BIT_TO_MASK(uint64_t &nMask, uint8_t nBit) { nMask |= (1ULL << nBit); }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-inline uint64_t millis64() { return esp_timer_get_time() / 1000ULL; }
+static inline uint64_t millis64() { return esp_timer_get_time() / 1000ULL; }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Sets the system time and timezone based on a given Unix timestamp.
 // Updates the system's internal clock to the provided timestamp (seconds since epoch).
-void SetCurrentDatetime(time_t nTimestamp) {
+static void SetCurrentDatetime(time_t nTimestamp) {
 	struct timeval tv;
 	tv.tv_sec = nTimestamp;
 	tv.tv_usec = 0;
@@ -166,7 +166,7 @@ void SetCurrentDatetime(time_t nTimestamp) {
 // Retrieves the current local time and stores it in the provided tm struct.
 // Uses the system time (UTC) and converts it to local time based on the configured timezone.
 // The result is stored in the pTimeInfo pointer passed by the caller.
-void GetLocalTimeNow(struct tm* pTimeInfo) {
+static void GetLocalTimeNow(struct tm* pTimeInfo) {
 	time_t pTimeNow = time(nullptr);
 	localtime_r(&pTimeNow, pTimeInfo);
 }
@@ -176,7 +176,7 @@ void GetLocalTimeNow(struct tm* pTimeInfo) {
 // - pFile: reference to the open File object.
 // - cBuffer: pointer to the destination character buffer (must be large enough to hold the line).
 // - nBufferSize: size of the destination buffer (including null terminator).
-void ReadFromStream(File& pFile, char* cBuffer, size_t nBufferSize) {
+static void ReadFromStream(File& pFile, char* cBuffer, size_t nBufferSize) {
 	size_t nLength = pFile.readBytesUntil('\n', cBuffer, nBufferSize - 1);
 
 	cBuffer[nLength] = '\0';
@@ -187,11 +187,11 @@ void ReadFromStream(File& pFile, char* cBuffer, size_t nBufferSize) {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Provides utility functions to convert between ticks (milliseconds) and human-readable time units.
 // Ticks are assumed to be in milliseconds, as returned by the millis64() function.
-inline uint64_t TicksToSeconds(uint64_t nTicks) { return nTicks / 1000; }
-inline uint64_t TicksToMinutes(uint64_t nTicks) { return nTicks / (1000 * 60); }
+static inline uint64_t TicksToSeconds(uint64_t nTicks) { return nTicks / 1000; }
+static inline uint64_t TicksToMinutes(uint64_t nTicks) { return nTicks / (1000 * 60); }
 
-inline uint32_t SecondsToTicks(uint32_t nSeconds) { return nSeconds * 1000; }
-inline uint32_t MinutesToTicks(uint32_t nMinutes) { return nMinutes * 1000 * 60; }
+static inline uint32_t SecondsToTicks(uint32_t nSeconds) { return nSeconds * 1000; }
+static inline uint32_t MinutesToTicks(uint32_t nMinutes) { return nMinutes * 1000 * 60; }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Executes the provided function (`fn`) with safe, exclusive access to the SD card using the SDMMC peripheral.
 // - Tries to acquire the SD card mutex within 250 ms to ensure thread-safe access across concurrent tasks (e.g., Web Server and Background Logging).
@@ -249,7 +249,7 @@ bool SafeSDAccess(std::function<void()> fn) {
 // - cFileName: Path of the file to write to.
 // - cBuffer: Text string to be written.
 // - bAppend: If true, appends to the file; otherwise, overwrites it.
-void WriteToSD(const char* cFileName, const char* cBuffer, bool bAppend) {
+static void WriteToSD(const char* cFileName, const char* cBuffer, bool bAppend) {
 	SafeSDAccess([&]() {
 		File pFile = SD_MMC.open(cFileName, bAppend ? FILE_APPEND : FILE_WRITE);
 		if (pFile) {
@@ -265,7 +265,7 @@ void WriteToSD(const char* cFileName, const char* cBuffer, bool bAppend) {
 // If verification fails, the temporary file is removed and the target file is left unchanged.
 // - cFileName: Path of the file to write to.
 // - cBuffer: Text string to be written.
-void WriteToSDAtomic(const char* cFileName, const char* cBuffer) {
+static void WriteToSDAtomic(const char* cFileName, const char* cBuffer) {
 	SafeSDAccess([&]() {
 		char cTempFileName[64];
 		snprintf(cTempFileName, sizeof(cTempFileName), "%s.atomic", cFileName);
@@ -306,7 +306,7 @@ void WriteToSDAtomic(const char* cFileName, const char* cBuffer) {
 // - Prepends timestamp (DD/MM/YYYY HH:MM:SS) and severity tag ([INFO], [WARN], [ERROR]).
 // - Enqueues the formatted message for writing to a daily log file (/logs/logging_DD_MM_YYYY.txt).
 // - Non-blocking: if the queue is full, the message is silently dropped.
-void LOGGER(ERR_TYPE nType, const char* cFormat, ...) {
+static void LOGGER(ERR_TYPE nType, const char* cFormat, ...) {
 	LogMessage pMSG;
 	char cPrintType[9];
 	struct tm currentTime;
@@ -444,7 +444,7 @@ void Thread_WiFiReconnect(void*) {
 		} else {
 			LOGGER(ERROR, "Max WiFi reconnect attempts reached.");
 		}
-
+		// TODO: Esto  capaz se puede mejorar...
 		vTaskSuspend(NULL);	// Suspends the task until needed again
 	}
 }
@@ -471,7 +471,7 @@ void Thread_LogProcessor(void*) {
 // - Sequentially applies all remaining image processing parameters (exposure, gain, white balance, etc.) from the global status structure.
 // - This function is essential to ensure hardware-software consistency, especially after the sensor wakes up from a Power Down state (PWDN HIGH to LOW), as the OV3660 volatile registers are reset to factory defaults upon hardware reactivation.
 // - By passing 'FrameSize' as an argument, the function decouples the resolution intent from the rest of the sensor's image state.
-void SetSensorConfig(framesize_t FrameSize) {
+static void SetSensorConfig(framesize_t FrameSize) {
 	sensor_t *pSensorConfig = esp_camera_sensor_get();
 
 	pSensorConfig->set_framesize(pSensorConfig, FrameSize);
@@ -801,6 +801,11 @@ void setup() {
 	xTaskCreate(Thread_LogProcessor, "LoggingTask", 4096, NULL, 1, NULL);
 
 	LOGGER(INFO, "Setting up Web Server...");
+
+	// Global headers to prevent CORS problems.
+	DefaultHeaders::Instance().addHeader(F("Access-Control-Allow-Origin"), F("*"));
+	DefaultHeaders::Instance().addHeader(F("Access-Control-Allow-Methods"), F("GET, POST, OPTIONS"));
+	DefaultHeaders::Instance().addHeader(F("Access-Control-Allow-Headers"), F("*"));
 
 	// Static files server
 	// Static serving of the logs, snapshots & timelapse folders and all the files inside of them
@@ -1356,7 +1361,7 @@ void setup() {
 				}
 				//////////////////////////////////////////////////
 				if (nSuccessCodeMask != 0 || nErrorCodeMask != 0) {	// If have some change, send response to web client and finally save new settings values
-					pRequest->send(200, F("text/plain"), "R" + String(nSuccessCodeMask) + "," + String(nErrorCodeMask));
+					pRequest->send(200, F("text/plain"), "MSG" + String(nSuccessCodeMask) + ":" + String(nErrorCodeMask));
 
 					if (bWiFiChanges) { // Update WiFi values after response the request. in otherwise the message is not sended.
 						strncpy(g_cSSID, pRequest->arg("ssid").c_str(), sizeof(g_cSSID) - 1);
@@ -1379,11 +1384,11 @@ void setup() {
 
 					return;
 				}
-			} else if (pRequest->arg("action") == "settings") { // This is for return all the Settings
+			} else if (pRequest->arg("action") == "refresh") { // This is for refresh Panel values
 				// ================================================== Current Time Section ================================================== //
 				time_t pTimeNow = time(nullptr);
 
-				String strResponse = ":" + String(pTimeNow);
+				String strResponse = String(pTimeNow);
 				// ================================================== Firmware Versioning & OTA Update Progress Section ================================================== //
 				strResponse += ":" + String(FIRMWAREVERSION) + ":" + String(g_nOTAProgress);
 				// ================================================== WiFi Section ================================================== //
@@ -1455,7 +1460,8 @@ void setup() {
 					data[45] → Sensor Digital Downsample Enable
 					data[46] → Sensor Color Bars (Test Mode) Enable
 				*/
-				pRequest->send(200, F("text/plain"), "SETTINGS" + strResponse);
+
+				pRequest->send(200, F("text/plain"), "REFRESH" + strResponse);
 				return;
 			} else if (pRequest->arg("action") == "list") {	// This returns file list from any directory in the SD Card
 				if (pRequest->hasArg("folder")) {
@@ -1533,7 +1539,6 @@ void setup() {
 				}
 
 				AsyncWebServerResponse *pResponse = pRequest->beginResponse_P(200, "image/jpeg", pCameraFrameBuffer->buf, pCameraFrameBuffer->len);
-				pResponse->addHeader(F("Access-Control-Allow-Origin"), F("*"));
 				pResponse->addHeader(F("Content-Disposition"), F("inline; filename=capture.jpg"));
 				pResponse->addHeader(F("Cache-Control"), F("no-cache, no-store, must-revalidate"));
 				pResponse->addHeader(F("Access-Control-Expose-Headers"), F("X-Flash-Status"));
@@ -1574,7 +1579,7 @@ void setup() {
 						g_nCurrentLedBrightness = g_nTimelapseLedBrightness;
 
 						ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
-
+						// TODO: Cómo se hace esto, hay que de alguna manera refrescar el valor de g_nLastCameraActivity.
 						vTaskDelay(2000 / portTICK_PERIOD_MS);	// 2000ms
 					}
 
@@ -1605,7 +1610,6 @@ void setup() {
 					}
 
 					AsyncWebServerResponse *pResponse = pRequest->beginResponse_P(200, "image/jpeg", pCameraFrameBuffer->buf, pCameraFrameBuffer->len);
-					pResponse->addHeader(F("Access-Control-Allow-Origin"), F("*"));
 					pResponse->addHeader(F("Content-Disposition"), F("inline; filename=capture.jpg"));
 					pResponse->addHeader(F("Cache-Control"), F("no-cache, no-store, must-revalidate"));
 					pResponse->addHeader(F("Access-Control-Expose-Headers"), F("X-Return"));
@@ -1629,7 +1633,12 @@ void setup() {
 		pRequest->send(501, F("text/plain"), F("HTTP 501"));
 	});
 
-	g_pWebServer.onNotFound([](AsyncWebServerRequest* pRequest) { pRequest->send(404, F("text/plain"), F("HTTP 404")); });
+	g_pWebServer.onNotFound([](AsyncWebServerRequest *pRequest) {
+		if (pRequest->method() == HTTP_OPTIONS)
+			pRequest->send(200, F("text/plain"), F("HTTP 200"));
+		else
+			pRequest->send(404, F("text/plain"), F("HTTP 404"));
+	});
 
 	g_pWebServer.on("/ota", HTTP_POST, [](AsyncWebServerRequest* pRequest) {
 		bool bUpdate = !Update.hasError();
@@ -1760,7 +1769,7 @@ void loop() {
 								g_nCurrentLedBrightness = g_nTimelapseLedBrightness;
 
 								ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
-
+								// TODO: Esto es una mierda. Sería mejor un sistema cómo en el esp32indoorv5. Pero el tiempo de espera no podria ser superior o igual a camera shutdown interval....
 								vTaskDelay(2000 / portTICK_PERIOD_MS);	// 2000ms
 							}
 

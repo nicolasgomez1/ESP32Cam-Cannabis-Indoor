@@ -40,7 +40,7 @@ ESP32Cam Web End Points:
 	- SCS:10 → Se actualizó la Velocidad de Clock del Sensor.
 	- ERR:0 → No se pudo actualizar la Velocidad de Clock del Sensor.
 - pf
-	- SCS:11 → Se actualizó el Formato de Píxeles.
+	- SCS:11 → Se actualizó el Formato de Imagen.
 - ifs
 	- SCS:12 → Se actualizó la Resolución Inicial (Y de Timelapse) de Imagen del Sensor.
 - jpegq
