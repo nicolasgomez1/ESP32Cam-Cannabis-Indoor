@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V1_0518_0544WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V1_0518_1643WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -27,18 +27,18 @@
 // Definitions
 //#define ENABLE_AP_ALWAYS	// Use this to enable always the Access Point. Else it just enable when have no internet connection
 
-#define LOG_QUEUE_SIZE 20
-#define LOG_QUEUE_MAX_MSG_LEN 256
+#define LOG_QUEUE_SIZE				20
+#define LOG_QUEUE_MAX_MSG_LEN	256
 
-#define WIFI_MAX_RETRYS 5	// Max WiFi reconnection attempts
-#define WIFI_RETRY_INTERVAL 1000	// 1 second
+#define WIFI_MAX_RETRYS			5			// Max WiFi reconnection attempts
+#define WIFI_RETRY_INTERVAL	1000	// 1 second
 
 #define TIMEZONE "ART3"	// POSIX Format
 
 #define TIME_SAVE_INTERVAL 10000	// 10 seconds
 
-#define FLASH_LED_FREQUENCY 20000	// 20kHz
-#define FLASH_LED_RESOLUTION 8
+#define FLASH_LED_FREQUENCY	20000	// 20kHz
+#define FLASH_LED_RESOLUTION	8
 
 // Pins (Using an NodeMCU ESP32-CAM (OV3660))
 #define PWDN_GPIO_NUM		32
@@ -319,7 +319,7 @@ static void LOGGER(ERR_TYPE nType, const char* cFormat, ...) {
 		case ERROR:	snprintf(cPrintType, sizeof(cPrintType), "[ERROR] ");	break;
 	}
 
-	uint8_t nOffset = snprintf(pMSG.cBuffer, sizeof(pMSG.cBuffer), "%02d/%02d/%04d %02d:%02d:%02d %s", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec, cPrintType);
+	int nOffset = snprintf(pMSG.cBuffer, sizeof(pMSG.cBuffer), "%02d/%02d/%04d %02d:%02d:%02d %s", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec, cPrintType);
 
 	va_list args;
 	va_start(args, cFormat);
@@ -554,23 +554,23 @@ void setup() {
 		if (pSettingsFile) {
 			char cBuffer[64];
 			///////////////////////////////////////////////////
-			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // SSID
+			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// SSID
 
 			strncpy(g_cSSID, cBuffer, sizeof(g_cSSID));
 			g_cSSID[sizeof(g_cSSID) - 1] = '\0';
 			///////////////////////////////////////////////////
-			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // SSID PASSWORD
+			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// SSID PASSWORD
 
 			strncpy(g_cSSIDPWD, cBuffer, sizeof(g_cSSIDPWD));
 			g_cSSIDPWD[sizeof(g_cSSIDPWD) - 1] = '\0';
 			///////////////////////////////////////////////////
-			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // WIFI RETRY CONNECT INTERVAL
+			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// WIFI RETRY CONNECT INTERVAL
 			g_nWiFiRetryConnectInterval = atoi(cBuffer);
 			///////////////////////////////////////////////////
-			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // WIFI SLEEP
+			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// WIFI SLEEP
 			g_bWiFiSleep = atoi(cBuffer);
 			///////////////////////////////////////////////////
-			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));  // WIFI TRANSMIT POWER
+			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// WIFI TRANSMIT POWER
 			g_pWiFiPower = (wifi_power_t)atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// INTERVAL FROM LAST WEB CONNECTION TO SHUTDOWN THE SENSOR & FLASH LED
@@ -1389,31 +1389,9 @@ void setup() {
 				}
 			} else if (pRequest->arg("action") == "refresh") { // This is for refresh Panel values
 				// ================================================== Current Time Section ================================================== //
-				char cBuffer[256];
+				char cBuffer[256];	// TODO: Esto lo voy a tener que recalcular yo mismo, quiero 100% de precision...
 				time_t pTimeNow = time(nullptr);
 
-				/*String strResponse = String(pTimeNow);
-				// ================================================== Firmware Versioning & OTA Update Progress Section ================================================== //
-				strResponse += ":" + String(FIRMWAREVERSION) + ":" + String(g_nOTAProgress);
-				// ================================================== WiFi Section ================================================== //
-				strResponse += ":" + String(g_cSSID) + ":" + String(g_cSSIDPWD) + ":" + String(TicksToMinutes(g_nWiFiRetryConnectInterval)) + ":" + String(g_bWiFiSleep) + ":" + String(g_pWiFiPower);
-				// ================================================== Shutdown Camera & Flash LED Section ================================================== //
-				strResponse += ":" + String(TicksToSeconds(g_nSensorShutdownInterval));
-				// ================================================== Timelapse Section ================================================== //
-				strResponse += ":" + String((g_nEffectiveStartTimelapse == 0) ? 24 : g_nEffectiveStartTimelapse) + ":" + String((g_nEffectiveStopTimelapse == 0) ? 24 : g_nEffectiveStopTimelapse);
-				strResponse += ":" + String(TicksToMinutes(g_nTimelapseInterval)) + ":" + String(g_nTimelapseCounter) + ":" + String(g_nTimelapseLedBrightness);
-				// ================================================== Monitoring Section ================================================== //
-				strResponse += ":" + String(g_nMonitoringLedBrightness);
-				// ================================================== Camera Section ================================================== //
-				strResponse += ":" + String(g_pCameraConfig.xclk_freq_hz) + ":" + String(g_pCameraConfig.pixel_format) + ":" + String(g_pCameraConfig.frame_size) + ":" + String(g_pCameraConfig.jpeg_quality);
-				strResponse += ":" + String(g_pCameraConfig.fb_count) + ":" + String(g_pCameraConfig.fb_location) + ":" + String(g_pCameraConfig.grab_mode);
-				// ================================================== Sensor Section ================================================== //
-				strResponse += ":" + String(g_pSensorStatus.framesize) + ":" + String(g_pSensorStatus.brightness) + ":" + String(g_pSensorStatus.contrast) + ":" + String(g_pSensorStatus.saturation) + ":" + String(g_pSensorStatus.sharpness);
-				strResponse += ":" + String(g_pSensorStatus.denoise) + ":" + String(g_pSensorStatus.special_effect) + ":" + String(g_pSensorStatus.wb_mode) + ":" + String(g_pSensorStatus.awb) + ":" + String(g_pSensorStatus.awb_gain);
-				strResponse += ":" + String(g_pSensorStatus.aec) + ":" + String(g_pSensorStatus.aec2) + ":" + String(g_pSensorStatus.ae_level) + ":" + String(g_pSensorStatus.aec_value) + ":" + String(g_pSensorStatus.agc);
-				strResponse += ":" + String(g_pSensorStatus.agc_gain) + ":" + String(g_pSensorStatus.gainceiling) + ":" + String(g_pSensorStatus.bpc) + ":" + String(g_pSensorStatus.wpc) + ":" + String(g_pSensorStatus.raw_gma);
-				strResponse += ":" + String(g_pSensorStatus.lenc) + ":" + String(g_pSensorStatus.hmirror) + ":" + String(g_pSensorStatus.vflip) + ":" + String(g_pSensorStatus.dcw) + ":" + String(g_pSensorStatus.colorbar);*/
-				// ========================================================================================================================= //
 				snprintf(cBuffer, sizeof(cBuffer),
 					// Time : FW : OTA
 					"REFRESH%lu:%s:%u"
@@ -1430,17 +1408,14 @@ void setup() {
 					// Sensor status
 					":%d:%d:%d:%d:%d:%u:%u:%u:%u:%u:%u:%u:%d:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u",
 					// Time : FW : OTA
-					(unsigned long)pTimeNow, FIRMWAREVERSION, (unsigned int)g_nOTAProgress,
+					(unsigned long)pTimeNow, FIRMWAREVERSION, g_nOTAProgress,
 					// WiFi
-					g_cSSID, g_cSSIDPWD,
-					TicksToMinutes(g_nWiFiRetryConnectInterval),
-					(unsigned)g_bWiFiSleep,
-					(int)g_pWiFiPower,
+					g_cSSID, g_cSSIDPWD, TicksToMinutes(g_nWiFiRetryConnectInterval), (unsigned)g_bWiFiSleep, (int)g_pWiFiPower,
 					// Shutdown
 					TicksToSeconds(g_nSensorShutdownInterval),
 					// Timelapse
 					(g_nEffectiveStartTimelapse == 0) ? (uint8_t)24 : g_nEffectiveStartTimelapse,
-					(g_nEffectiveStopTimelapse  == 0) ? (uint8_t)24 : g_nEffectiveStopTimelapse,
+					(g_nEffectiveStopTimelapse == 0) ? (uint8_t)24 : g_nEffectiveStopTimelapse,
 					TicksToMinutes(g_nTimelapseInterval),
 					g_nTimelapseCounter,
 					g_nTimelapseLedBrightness,
@@ -1483,7 +1458,7 @@ void setup() {
 					data[12] → Timelapse Captures Counter
 					data[13] → Timelapse Flash LED Brightness
 					data[14] → Monitoring Flash LED Brightness
-					data[15] → Camera Master Clock  (XCLK)
+					data[15] → Camera Master Clock (XCLK)
 					data[16] → Camera Pixel Format
 					data[17] → Camera Initial & Timelapse Frame Size
 					data[18] → Camera Image Compression Level
@@ -1761,7 +1736,7 @@ void setup() {
 
 	g_pWebServer.begin();
 
-	LOGGER(INFO, "Web Server Started at Port: %d.", SECRET_WEBSERVER_PORT);
+	LOGGER(INFO, "Web Server Started at Port: %u.", SECRET_WEBSERVER_PORT);
 }
 
 void loop() {
@@ -1801,9 +1776,9 @@ void loop() {
 			static uint64_t nTimelapseInterval = 0;
 
 			if ((nCurrentMillis - nTimelapseInterval) >= g_nTimelapseInterval) {
-				if ((g_nEffectiveStartTimelapse > 0 || g_nEffectiveStopTimelapse > 0) &&  // Check if either the timelapse start time or stop time is set (greater than 0)
+				if ((g_nEffectiveStartTimelapse > 0 || g_nEffectiveStopTimelapse > 0) &&	// Check if either the timelapse start time or stop time is set (greater than 0)
 					(g_nEffectiveStartTimelapse < g_nEffectiveStopTimelapse && currentTime.tm_hour >= g_nEffectiveStartTimelapse && currentTime.tm_hour < g_nEffectiveStopTimelapse) || // Normal case: timelapse start time is before stop time (e.g., from 7 AM to 7 PM)
-					(g_nEffectiveStartTimelapse >= g_nEffectiveStopTimelapse && (currentTime.tm_hour >= g_nEffectiveStartTimelapse || currentTime.tm_hour < g_nEffectiveStopTimelapse))) {  // Special case: timelapse schedule crosses midnight (e.g., from 8 PM to 6 AM)
+					(g_nEffectiveStartTimelapse >= g_nEffectiveStopTimelapse && (currentTime.tm_hour >= g_nEffectiveStartTimelapse || currentTime.tm_hour < g_nEffectiveStopTimelapse))) {	// Special case: timelapse schedule crosses midnight (e.g., from 8 PM to 6 AM)
 					nTimelapseInterval = nCurrentMillis;
 
 					if (g_nOTAProgress > 0) {
