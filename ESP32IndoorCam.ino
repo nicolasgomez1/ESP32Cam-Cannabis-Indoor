@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V1_0518_1643WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V1_0518_1732WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -1679,11 +1679,6 @@ void setup() {
 		bool bUpdate = !Update.hasError();
 
 		if (bUpdate) {
-			time_t pTimeNow = time(nullptr);
-			char cBuffer[11];
-			snprintf(cBuffer, sizeof(cBuffer), "%lu", (unsigned long)pTimeNow);
-			WriteToSDAtomic("/time", cBuffer);	// Write current time to SD Card
-
 			LOGGER(INFO, "Restarting Controller to do a Firmware Update.");
 
 			delay(1000);
