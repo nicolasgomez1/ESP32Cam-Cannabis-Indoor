@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V1_0518_1732WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V1_0518_2130WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -1388,7 +1388,6 @@ void setup() {
 					return;
 				}
 			} else if (pRequest->arg("action") == "refresh") { // This is for refresh Panel values
-				// ================================================== Current Time Section ================================================== //
 				char cBuffer[256];	// TODO: Esto lo voy a tener que recalcular yo mismo, quiero 100% de precision...
 				time_t pTimeNow = time(nullptr);
 
@@ -1477,11 +1476,11 @@ void setup() {
 					data[31] → Sensor Automatic White Balance Gain Level
 					data[32] → Sensor Automatic Exposure Enable
 					data[33] → Sensor Automatic Exposure (Night Mode) Enable
-					data[34] → Sensor Automatic Exposure Level
+					data[34] → Sensor Auto Exposure Compensation Level
 					data[35] → Sensor Manual Exposure Level
 					data[36] → Sensor Automatic Gain Enable
-					data[37] → Sensor Automatic Gain Level
-					data[38] → Sensor Automatic Max Gain Level
+					data[37] → Sensor Manual Gain Level
+					data[38] → Sensor Gain Ceiling Level
 					data[39] → Sensor Black Pixel Cancellation Enable
 					data[40] → Sensor White Pixel Cancellation Enable
 					data[41] → Sensor Raw Gamma Correction Level
