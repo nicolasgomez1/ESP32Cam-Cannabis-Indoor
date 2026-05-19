@@ -1,7 +1,5 @@
 ESP32Cam Web End Points:
 
-- time
-	- SCS:0 → Se sincronizó la Fecha actual.
 - ssid
 	- SCS:1 → Se actualizó el SSID de WiFi.
 	- SCS:3 → Se intentará conectar a la nueva Red.	(Esta tiene que tener un check si tiene un guión; de ser así se indicará el nombre de la Red wifi que levanta el esp32 para ser reconfigurado)
@@ -30,14 +28,12 @@ ESP32Cam Web End Points:
 	- SCS:13 → Se actualizó la Intensidad del Flash (Para Monitoreo).
 - xclk
 	- SCS:14 → Se actualizó la Velocidad de Clock del Sensor.
-	- ERR:0 → No se pudo actualizar la Velocidad de Clock del Sensor.
 - pf
 	- SCS:15 → Se actualizó el Formato de Imagen.
 - ifs
 	- SCS:16 → Se actualizó la Resolución Inicial (Y de Timelapse) de Imagen del Sensor.
 - jpegq
 	- SCS:17 → Se actualizó el Nivel de Compresión de la Imagen.
-	- ERR:2 → No se pudo actualizar el Nivel de Compresión de Imagen del Sensor.
 - fbc
 	- SCS:18 → Se actualizó la cantidad de Frame Buffers.
 - fbl
@@ -46,7 +42,6 @@ ESP32Cam Web End Points:
 	- SCS:20 → Se actualizó el Modo de Captura de Cuadros del Sensor.
 - mfs
 	- SCS:21 → Se actualizó la Resolución de Imagen (de Monitoreo) del Sensor.
-	- ERR:1 → No se pudo actualizar Resolución de Imagen (de Monitoreo) del Sensor.
 - bnl
 	- SCS:22 → Se actualizó el Nivel de Brillo del Sensor.
 - cl

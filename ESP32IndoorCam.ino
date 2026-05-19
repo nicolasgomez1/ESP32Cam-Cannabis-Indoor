@@ -825,7 +825,6 @@ void setup() {
 			} else if (pRequest->arg("action") == "update") {	// This is for update Settings
 				uint64_t nNewValue;
 				uint64_t nSuccessCodeMask = 0;
-				uint64_t nErrorCodeMask = 0;
 				bool bWiFiChanges = false;
 				sensor_t *pSensorConfig = esp_camera_sensor_get();
 
@@ -975,8 +974,6 @@ void setup() {
 
 						if (pSensorConfig->set_xclk(pSensorConfig, LEDC_TIMER_0, nNewValue) == 0)
 							SET_BIT_TO_MASK(nSuccessCodeMask, IDX_XCLK);
-						else
-							SET_BIT_TO_MASK(nErrorCodeMask, IDX_XCLK);
 					}
 				}
 				// =============== PIXEL FORMAT =============== //
@@ -1008,8 +1005,6 @@ void setup() {
 
 						if (pSensorConfig->set_quality(pSensorConfig, nNewValue) == 0)
 							SET_BIT_TO_MASK(nSuccessCodeMask, IDX_JPEG_QUALITY);
-						else
-							SET_BIT_TO_MASK(nErrorCodeMask, IDX_JPEG_QUALITY);
 					}
 				}
 				// =============== FRAME BUFFERS COUNT =============== //
@@ -1051,8 +1046,6 @@ void setup() {
 							g_pSensorStatus.framesize = (framesize_t)nNewValue;
 
 							SET_BIT_TO_MASK(nSuccessCodeMask, IDX_MFS_RESOLUTION);
-						} else {
-							SET_BIT_TO_MASK(nErrorCodeMask, IDX_MFS_RESOLUTION);
 						}
 					}
 				}
@@ -1360,9 +1353,9 @@ void setup() {
 					ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
 				}
 				//////////////////////////////////////////////////
-				if (nSuccessCodeMask != 0 || nErrorCodeMask != 0) {	// If have some change, send response to web client and finally save new settings values
-					char cBuffer[45];
-					snprintf(cBuffer, sizeof(cBuffer), "MSG%llu:%llu", nSuccessCodeMask, nErrorCodeMask);
+				if (nSuccessCodeMask != 0) {	// If have some change, send response to web client and finally save new settings values
+					char cBuffer[24];
+					snprintf(cBuffer, sizeof(cBuffer), "MSG%llu", nSuccessCodeMask);
 
 					pRequest->send(200, F("text/plain"), cBuffer);
 
