@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V1_0520_0052WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V1_0520_0136WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -25,8 +25,6 @@
 */
 
 // Definitions
-//#define ENABLE_AP_ALWAYS	// Use this to enable always the Access Point. Else it just enable when have no internet connection
-
 #define LOG_QUEUE_SIZE				20
 #define LOG_QUEUE_MAX_MSG_LEN	256
 
@@ -396,27 +394,13 @@ void SaveSettings() {
 	});
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Handles automatic WiFi reconnection using the global SSID and password credentials.
-// If ENABLE_AP_ALWAYS is not defined:
-// - Starts a temporary Access Point (SECRET_ACCESSPOINT_NAME) to allow reconfiguration during reconnection attempts.
-// - Once connected, the Access Point is shut down and the mode is switched to station-only.
-// Tries to reconnect up to WIFI_MAX_RETRYS times, with a 1-second delay between attempts.
-// Logs a success message with IP address upon connection, or an error message if all attempts fail.
-// After completion (regardless of success), the task is suspended until explicitly resumed elsewhere.
+// Handles automatic WiFi reconnection using global SSID and password credentials.
+// - Sets execution parameters like transmission power and sleep mode upon attempt.
+// - Retries to connect up to WIFI_MAX_RETRYS times, waiting WIFI_RETRY_INTERVAL between each attempt.
+// - Logs a success message with the assigned IP address upon connection, or an error message if all attempts fail.
+// - After completion (regardless of success), the task is suspended until explicitly resumed elsewhere.
 void Thread_WiFiReconnect(void*) {
 	for (;;) {
-#if !defined(ENABLE_AP_ALWAYS)
-		if (!(WiFi.getMode() & WIFI_AP)) {
-			LOGGER(INFO, "Starting Access Point (SSID: %s) mode for reconfiguration...", SECRET_ACCESSPOINT_NAME);
-
-			WiFi.mode(WIFI_AP_STA);	// Set dual mode, Access Point & Station
-
-			vTaskDelay(100 / portTICK_PERIOD_MS);	// Delay to stabilize AP
-
-			WiFi.softAP(SECRET_ACCESSPOINT_NAME);	// Start Access Point, while try to connect to WiFi
-		}
-#endif
-
 		WiFi.disconnect(true);
 
 		LOGGER(INFO, "Trying to reconnect WiFi...");
@@ -434,18 +418,10 @@ void Thread_WiFiReconnect(void*) {
 				vTaskDelay(WIFI_RETRY_INTERVAL / portTICK_PERIOD_MS);	// Wait before trying again
 			}
 
-			if (WiFi.status() == WL_CONNECTED) {
+			if (WiFi.status() == WL_CONNECTED)
 				LOGGER(INFO, "Connected to WiFi SSID: %s PASSWORD: %s. IP: %s.", g_cSSID, g_cSSIDPWD, WiFi.localIP().toString().c_str());
-
-#if !defined(ENABLE_AP_ALWAYS)
-				WiFi.softAPdisconnect(true);
-				WiFi.mode(WIFI_STA);
-
-				LOGGER(INFO, "Access Point disconnected.");
-#endif
-			} else {
+			else
 				LOGGER(ERROR, "Max WiFi reconnect attempts reached.");
-			}
 		}
 
 		vTaskSuspend(NULL);	// Suspends the task until needed again
@@ -765,15 +741,7 @@ void setup() {
 
 	LOGGER(INFO, "Initializing WiFi...");
 
-#ifdef ENABLE_AP_ALWAYS
-	WiFi.mode(WIFI_AP_STA);	// Set dual mode, Access Point & Station
-
-	WiFi.softAP(SECRET_ACCESSPOINT_NAME);
-
-	LOGGER(INFO, "Access Point active. AP IP: %s", WiFi.softAPIP().toString().c_str());
-#else
-	WiFi.mode(WIFI_STA);	// Only Station mode
-#endif
+	WiFi.mode(WIFI_STA);
 
 	LOGGER(INFO, "Creating WiFi reconnect task thread...");
 
@@ -1374,7 +1342,7 @@ void setup() {
 					(unsigned long)pTimeNow, FIRMWAREVERSION, g_nOTAProgress, g_cSSID, g_cSSIDPWD, TicksToMinutes(g_nWiFiRetryConnectInterval), (unsigned)g_bWiFiSleep, (int)g_pWiFiPower, TicksToSeconds(g_nSensorShutdownInterval),
 					(g_nEffectiveStartTimelapse == 0) ? 24 : g_nEffectiveStartTimelapse, (g_nEffectiveStopTimelapse == 0) ? 24 : g_nEffectiveStopTimelapse, TicksToMinutes(g_nTimelapseInterval), g_nTimelapseCounter,
 					g_nTimelapseLedBrightness, g_nMonitoringLedBrightness, g_pCameraConfig.xclk_freq_hz, (int)g_pCameraConfig.pixel_format, (int)g_pCameraConfig.frame_size,	g_pCameraConfig.jpeg_quality,
-					(unsigned long)g_pCameraConfig.fb_count, (int)g_pCameraConfig.fb_location, (int)g_pCameraConfig.grab_mode, (int)g_pSensorStatus.framesize, g_pSensorStatus.brightness, g_pSensorStatus.contrast, g_pSensorStatus.saturation, 
+					(unsigned long)g_pCameraConfig.fb_count, (int)g_pCameraConfig.fb_location, (int)g_pCameraConfig.grab_mode, (int)g_pSensorStatus.framesize, g_pSensorStatus.brightness, g_pSensorStatus.contrast, g_pSensorStatus.saturation,
 					g_pSensorStatus.sharpness, g_pSensorStatus.denoise, g_pSensorStatus.special_effect, g_pSensorStatus.wb_mode, g_pSensorStatus.awb, g_pSensorStatus.awb_gain, g_pSensorStatus.aec, g_pSensorStatus.aec2,
 					g_pSensorStatus.ae_level, g_pSensorStatus.aec_value, g_pSensorStatus.agc, g_pSensorStatus.agc_gain, g_pSensorStatus.gainceiling, g_pSensorStatus.bpc, g_pSensorStatus.wpc, g_pSensorStatus.raw_gma, g_pSensorStatus.lenc,
 					g_pSensorStatus.hmirror, g_pSensorStatus.vflip, g_pSensorStatus.dcw, g_pSensorStatus.colorbar
