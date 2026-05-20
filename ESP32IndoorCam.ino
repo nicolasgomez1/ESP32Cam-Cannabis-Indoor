@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V1_0518_2130WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V1_0520_0052WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -120,8 +120,8 @@ struct LogMessage {
 };
 
 // Settings Variables
-char g_cSSID[16];
-char g_cSSIDPWD[16];
+char g_cSSID[32];
+char g_cSSIDPWD[32];
 uint64_t g_nWiFiRetryConnectInterval = 0;
 bool g_bWiFiSleep = true;
 wifi_power_t g_pWiFiPower;
@@ -136,6 +136,7 @@ camera_config_t g_pCameraConfig;
 camera_status_t g_pSensorStatus;
 
 // Internal Variables
+bool bForceTryConnectWiFi = true;
 uint64_t g_nLastCameraActivity = 0;
 uint8_t g_nCurrentLedBrightness = 0;
 framesize_t g_CurrentFrameSize;
@@ -420,29 +421,31 @@ void Thread_WiFiReconnect(void*) {
 
 		LOGGER(INFO, "Trying to reconnect WiFi...");
 
-		WiFi.begin(g_cSSID, g_cSSIDPWD);
-		WiFi.setTxPower(g_pWiFiPower);
-		WiFi.setSleep(g_bWiFiSleep);
+		if (g_cSSID[0] != '\0') {
+			WiFi.begin(g_cSSID, g_cSSIDPWD);
+			WiFi.setTxPower(g_pWiFiPower);
+			WiFi.setSleep(g_bWiFiSleep);
 
-		uint8_t nConnectTrysCount = 0;
+			uint8_t nConnectTrysCount = 0;
 
-		while (nConnectTrysCount < WIFI_MAX_RETRYS && WiFi.status() != WL_CONNECTED) {
-			nConnectTrysCount++;
+			while (nConnectTrysCount < WIFI_MAX_RETRYS && WiFi.status() != WL_CONNECTED) {
+				nConnectTrysCount++;
 
-			vTaskDelay(WIFI_RETRY_INTERVAL / portTICK_PERIOD_MS);	// Wait before trying again
-		}
+				vTaskDelay(WIFI_RETRY_INTERVAL / portTICK_PERIOD_MS);	// Wait before trying again
+			}
 
-		if (WiFi.status() == WL_CONNECTED) {
-			LOGGER(INFO, "Connected to WiFi SSID: %s PASSWORD: %s. IP: %s.", g_cSSID, g_cSSIDPWD, WiFi.localIP().toString().c_str());
+			if (WiFi.status() == WL_CONNECTED) {
+				LOGGER(INFO, "Connected to WiFi SSID: %s PASSWORD: %s. IP: %s.", g_cSSID, g_cSSIDPWD, WiFi.localIP().toString().c_str());
 
 #if !defined(ENABLE_AP_ALWAYS)
-			WiFi.softAPdisconnect(true);
-			WiFi.mode(WIFI_STA);
+				WiFi.softAPdisconnect(true);
+				WiFi.mode(WIFI_STA);
 
-			LOGGER(INFO, "Access Point disconnected.");
+				LOGGER(INFO, "Access Point disconnected.");
 #endif
-		} else {
-			LOGGER(ERROR, "Max WiFi reconnect attempts reached.");
+			} else {
+				LOGGER(ERROR, "Max WiFi reconnect attempts reached.");
+			}
 		}
 
 		vTaskSuspend(NULL);	// Suspends the task until needed again
@@ -576,12 +579,12 @@ void setup() {
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// INTERVAL FROM LAST WEB CONNECTION TO SHUTDOWN THE SENSOR & FLASH LED
 			g_nSensorShutdownInterval = atoi(cBuffer);
 			///////////////////////////////////////////////////
-			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// START TIMELAPSE TIME
+			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// TIMELAPSE START HOUR
 			uint8_t nValue = atoi(cBuffer);
 
 			g_nEffectiveStartTimelapse = (nValue == 24) ? 0 : nValue;	// Stores the effective timelapse start hour, converting hour 24 to 0 (midnight)
 			///////////////////////////////////////////////////
-			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// STOP TIMELAPSE TIME
+			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// TIMELAPSE STOP HOUR
 			nValue = atoi(cBuffer);
 
 			g_nEffectiveStopTimelapse = (nValue == 24) ? 0 : nValue;	// Stores the effective timelapse stop hour, converting hour 24 to 0 (midnight)
@@ -772,25 +775,6 @@ void setup() {
 	WiFi.mode(WIFI_STA);	// Only Station mode
 #endif
 
-	if (g_cSSID[0] != '\0') {
-		WiFi.begin(g_cSSID, g_cSSIDPWD);
-		WiFi.setTxPower(g_pWiFiPower);
-		WiFi.setSleep(g_bWiFiSleep);
-
-		uint8_t nConnectTrysCount = 0;
-
-		while (nConnectTrysCount < WIFI_MAX_RETRYS && WiFi.status() != WL_CONNECTED) {
-			nConnectTrysCount++;
-
-			delay(WIFI_RETRY_INTERVAL);	// Wait before trying again
-		}
-
-		if (WiFi.status() == WL_CONNECTED)
-			LOGGER(INFO, "Connected to WiFi SSID: %s PASSWORD: %s. IP: %s.", g_cSSID, g_cSSIDPWD, WiFi.localIP().toString().c_str());
-		else
-			LOGGER(ERROR, "Max WiFi reconnect attempts reached.");
-	}
-
 	LOGGER(INFO, "Creating WiFi reconnect task thread...");
 
 	xTaskCreatePinnedToCore(Thread_WiFiReconnect, "WiFiReconnectTask", 4096, NULL, 1, &g_pWiFiReconnect, 0);
@@ -893,7 +877,7 @@ void setup() {
 						SET_BIT_TO_MASK(nSuccessCodeMask, IDX_SENSOR_SHUTDOWN_INTERVAL);
 					}
 				}
-				// =============== START TIMELAPSE TIME =============== //
+				// =============== TIMELAPSE START HOUR =============== //
 				if (pRequest->hasArg("timelapsestart")) {
 					nNewValue = pRequest->arg("timelapsestart").toInt();
 
@@ -903,7 +887,7 @@ void setup() {
 						SET_BIT_TO_MASK(nSuccessCodeMask, IDX_TL_START);
 					}
 				}
-				// =============== STOP TIMELAPSE TIME =============== //
+				// =============== TIMELAPSE STOP HOUR =============== //
 				if (pRequest->hasArg("timelapsestop")) {
 					nNewValue = pRequest->arg("timelapsestop").toInt();
 
@@ -1376,61 +1360,24 @@ void setup() {
 
 						if (eTaskGetState(g_pWiFiReconnect) != eSuspended)
 							vTaskSuspend(g_pWiFiReconnect);
+
+						bForceTryConnectWiFi = true;
 					}
 
 					return;
 				}
 			} else if (pRequest->arg("action") == "refresh") { // This is for refresh Panel values
-				char cBuffer[256];	// TODO: Esto lo voy a tener que recalcular yo mismo, quiero 100% de precision...
+				char cBuffer[278];
 				time_t pTimeNow = time(nullptr);
 
-				snprintf(cBuffer, sizeof(cBuffer),
-					// Time : FW : OTA
-					"REFRESH%lu:%s:%u"
-					// WiFi
-					":%s:%s:%llu:%u:%d"
-					// Shutdown
-					":%llu"
-					// Timelapse
-					":%u:%u:%llu:%u:%u"
-					// Monitoring
-					":%u"
-					// Camera config
-					":%d:%d:%d:%d:%u:%d:%d"
-					// Sensor status
-					":%d:%d:%d:%d:%d:%u:%u:%u:%u:%u:%u:%u:%d:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u",
-					// Time : FW : OTA
-					(unsigned long)pTimeNow, FIRMWAREVERSION, g_nOTAProgress,
-					// WiFi
-					g_cSSID, g_cSSIDPWD, TicksToMinutes(g_nWiFiRetryConnectInterval), (unsigned)g_bWiFiSleep, (int)g_pWiFiPower,
-					// Shutdown
-					TicksToSeconds(g_nSensorShutdownInterval),
-					// Timelapse
-					(g_nEffectiveStartTimelapse == 0) ? (uint8_t)24 : g_nEffectiveStartTimelapse,
-					(g_nEffectiveStopTimelapse == 0) ? (uint8_t)24 : g_nEffectiveStopTimelapse,
-					TicksToMinutes(g_nTimelapseInterval),
-					g_nTimelapseCounter,
-					g_nTimelapseLedBrightness,
-					// Monitoring
-					g_nMonitoringLedBrightness,
-					// Camera config
-					g_pCameraConfig.xclk_freq_hz,
-					(int)g_pCameraConfig.pixel_format, (int)g_pCameraConfig.frame_size,
-					g_pCameraConfig.jpeg_quality,
-					g_pCameraConfig.fb_count, (int)g_pCameraConfig.fb_location, (int)g_pCameraConfig.grab_mode,
-					// Sensor status
-					(int)g_pSensorStatus.framesize,
-					(int)g_pSensorStatus.brightness, (int)g_pSensorStatus.contrast,
-					(int)g_pSensorStatus.saturation, (int)g_pSensorStatus.sharpness,
-					g_pSensorStatus.denoise, g_pSensorStatus.special_effect, g_pSensorStatus.wb_mode,
-					g_pSensorStatus.awb, g_pSensorStatus.awb_gain,
-					g_pSensorStatus.aec, g_pSensorStatus.aec2,
-					(int)g_pSensorStatus.ae_level,
-					g_pSensorStatus.aec_value,
-					g_pSensorStatus.agc, g_pSensorStatus.agc_gain, g_pSensorStatus.gainceiling,
-					g_pSensorStatus.bpc, g_pSensorStatus.wpc, g_pSensorStatus.raw_gma,
-					g_pSensorStatus.lenc, g_pSensorStatus.hmirror, g_pSensorStatus.vflip,
-					g_pSensorStatus.dcw, g_pSensorStatus.colorbar
+				snprintf(cBuffer, sizeof(cBuffer), "REFRESH%lu:%s:%u:%s:%s:%llu:%u:%d:%llu:%u:%u:%llu:%d:%u:%u:%d:%d:%d:%d:%lu:%d:%d:%d:%d:%d:%d:%d:%u:%u:%u:%u:%u:%u:%u:%d:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u",
+					(unsigned long)pTimeNow, FIRMWAREVERSION, g_nOTAProgress, g_cSSID, g_cSSIDPWD, TicksToMinutes(g_nWiFiRetryConnectInterval), (unsigned)g_bWiFiSleep, (int)g_pWiFiPower, TicksToSeconds(g_nSensorShutdownInterval),
+					(g_nEffectiveStartTimelapse == 0) ? 24 : g_nEffectiveStartTimelapse, (g_nEffectiveStopTimelapse == 0) ? 24 : g_nEffectiveStopTimelapse, TicksToMinutes(g_nTimelapseInterval), g_nTimelapseCounter,
+					g_nTimelapseLedBrightness, g_nMonitoringLedBrightness, g_pCameraConfig.xclk_freq_hz, (int)g_pCameraConfig.pixel_format, (int)g_pCameraConfig.frame_size,	g_pCameraConfig.jpeg_quality,
+					(unsigned long)g_pCameraConfig.fb_count, (int)g_pCameraConfig.fb_location, (int)g_pCameraConfig.grab_mode, (int)g_pSensorStatus.framesize, g_pSensorStatus.brightness, g_pSensorStatus.contrast, g_pSensorStatus.saturation, 
+					g_pSensorStatus.sharpness, g_pSensorStatus.denoise, g_pSensorStatus.special_effect, g_pSensorStatus.wb_mode, g_pSensorStatus.awb, g_pSensorStatus.awb_gain, g_pSensorStatus.aec, g_pSensorStatus.aec2,
+					g_pSensorStatus.ae_level, g_pSensorStatus.aec_value, g_pSensorStatus.agc, g_pSensorStatus.agc_gain, g_pSensorStatus.gainceiling, g_pSensorStatus.bpc, g_pSensorStatus.wpc, g_pSensorStatus.raw_gma, g_pSensorStatus.lenc,
+					g_pSensorStatus.hmirror, g_pSensorStatus.vflip, g_pSensorStatus.dcw, g_pSensorStatus.colorbar
 				);
 				// ========================================================================================================================= //
 				/*
@@ -1740,7 +1687,7 @@ void loop() {
 		{
 			static uint64_t nLastReconnectAttemptInterval = 0;
 
-			if (eTaskGetState(g_pWiFiReconnect) == eSuspended && WiFi.status() != WL_CONNECTED && (nCurrentMillis - nLastReconnectAttemptInterval) >= g_nWiFiRetryConnectInterval) {
+			if (eTaskGetState(g_pWiFiReconnect) == eSuspended && WiFi.status() != WL_CONNECTED && (bForceTryConnectWiFi || (nCurrentMillis - nLastReconnectAttemptInterval) >= g_nWiFiRetryConnectInterval)) {
 				nLastReconnectAttemptInterval = nCurrentMillis;
 
 				vTaskResume(g_pWiFiReconnect);
