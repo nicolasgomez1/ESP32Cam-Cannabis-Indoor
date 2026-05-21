@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V1_0520_0136WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V1_0521_1337WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -35,7 +35,7 @@
 
 #define TIME_SAVE_INTERVAL 10000	// 10 seconds
 
-#define FLASH_LED_FREQUENCY	20000	// 20kHz
+#define FLASH_LED_FREQUENCY		20000	// 20kHz
 #define FLASH_LED_RESOLUTION	8
 
 // Pins (Using an NodeMCU ESP32-CAM (OV3660))
@@ -394,13 +394,25 @@ void SaveSettings() {
 	});
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Handles automatic WiFi reconnection using global SSID and password credentials.
-// - Sets execution parameters like transmission power and sleep mode upon attempt.
-// - Retries to connect up to WIFI_MAX_RETRYS times, waiting WIFI_RETRY_INTERVAL between each attempt.
+// Handles automatic WiFi reconnection using the global SSID and password credentials.
+// - Starts a temporary Access Point (SECRET_ACCESSPOINT_NAME) to allow reconfiguration during reconnection attempts.
+// - Sets execution parameters like transmission power and sleep mode upon connection attempt.
+// - Tries to reconnect up to WIFI_MAX_RETRYS times, with a delay of WIFI_RETRY_INTERVAL between each attempt.
+// - Once successfully connected, the Access Point is shut down and the mode is switched to station-only (WIFI_STA).
 // - Logs a success message with the assigned IP address upon connection, or an error message if all attempts fail.
 // - After completion (regardless of success), the task is suspended until explicitly resumed elsewhere.
 void Thread_WiFiReconnect(void*) {
 	for (;;) {
+		if (!(WiFi.getMode() & WIFI_AP)) {
+			LOGGER(INFO, "Starting Access Point (SSID: %s) mode for reconfiguration...", SECRET_ACCESSPOINT_NAME);
+
+			WiFi.mode(WIFI_AP_STA);	// Set dual mode, Access Point & Station
+
+			vTaskDelay(100 / portTICK_PERIOD_MS);	// Delay to stabilize AP
+
+			WiFi.softAP(SECRET_ACCESSPOINT_NAME);	// Start Access Point, while try to connect to WiFi
+		}
+
 		WiFi.disconnect(true);
 
 		LOGGER(INFO, "Trying to reconnect WiFi...");
@@ -418,10 +430,16 @@ void Thread_WiFiReconnect(void*) {
 				vTaskDelay(WIFI_RETRY_INTERVAL / portTICK_PERIOD_MS);	// Wait before trying again
 			}
 
-			if (WiFi.status() == WL_CONNECTED)
+			if (WiFi.status() == WL_CONNECTED) {
 				LOGGER(INFO, "Connected to WiFi SSID: %s PASSWORD: %s. IP: %s.", g_cSSID, g_cSSIDPWD, WiFi.localIP().toString().c_str());
-			else
+
+				WiFi.softAPdisconnect(true);
+				WiFi.mode(WIFI_STA);
+
+				LOGGER(INFO, "Access Point disconnected.");
+			} else {
 				LOGGER(ERROR, "Max WiFi reconnect attempts reached.");
+			}
 		}
 
 		vTaskSuspend(NULL);	// Suspends the task until needed again
