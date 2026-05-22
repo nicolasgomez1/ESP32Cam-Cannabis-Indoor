@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V1_0522_0458WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V1_0522_0554WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -1500,7 +1500,7 @@ void setup() {
 					return;
 				}
 
-				AsyncWebServerResponse *pResponse = pRequest->beginResponse_P(200, "image/jpeg", pCameraFrameBuffer->buf, pCameraFrameBuffer->len);
+				AsyncWebServerResponse *pResponse = pRequest->beginResponse_P(200, F("image/jpeg"), pCameraFrameBuffer->buf, pCameraFrameBuffer->len);
 				pResponse->addHeader(F("Content-Disposition"), F("inline; filename=capture.jpg"));
 				pResponse->addHeader(F("Cache-Control"), F("no-cache, no-store, must-revalidate"));
 				pResponse->addHeader(F("Access-Control-Expose-Headers"), F("X-Flash-Status, X-Timestamp"));
@@ -1577,7 +1577,7 @@ void setup() {
 							LOGGER(INFO, "Snapshot save to: %s", cFilename);
 					}
 
-					AsyncWebServerResponse *pResponse = pRequest->beginResponse_P(200, "image/jpeg", pCameraFrameBuffer->buf, pCameraFrameBuffer->len);
+					AsyncWebServerResponse *pResponse = pRequest->beginResponse_P(200, F("image/jpeg"), pCameraFrameBuffer->buf, pCameraFrameBuffer->len);
 					pResponse->addHeader(F("Content-Disposition"), F("inline; filename=capture.jpg"));
 					pResponse->addHeader(F("Cache-Control"), F("no-cache, no-store, must-revalidate"));
 					pResponse->addHeader(F("Access-Control-Expose-Headers"), F("X-Return"));
