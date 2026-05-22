@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V1_0522_0246WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V1_0522_044WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -724,11 +724,15 @@ void setup() {
 
 			LOGGER(INFO, "Timezone setted.");
 
-			String strRawTime = pTimeFile.readStringUntil('\n');
+			char cBuffer[11];
 
-			LOGGER(INFO, "Time file raw content: '%s', length: %d.", strRawTime.c_str(), strRawTime.length());
+			ReadFromStream(pTimeFile, cBuffer, sizeof(cBuffer));
 
-			time_t nTime = strRawTime.toInt();
+			size_t nBytesRead = strlen(cBuffer);
+
+			LOGGER(INFO, "Time file raw content: '%s', length: %d.", cBuffer, nBytesRead);
+
+			time_t nTime = strtol(cBuffer, nullptr, 10);
 
 			if (nTime > 1770000000) {	// WARNING: Hardcode check
 				SetCurrentDatetime(nTime);
@@ -785,22 +789,24 @@ void setup() {
 
 	// Request handler
 	g_pWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest* pRequest) {
-		if (pRequest->hasArg("action")) {	// Process the request
-			if (pRequest->arg("action") == "restart") {
+		const AsyncWebParameter* pParamAction = pRequest->getParam("action");
+		if (pParamAction) {
+			if (pParamAction->value() == "restart") {
 				LOGGER(INFO, "Restarting Controller by Web command.");
 
 				delay(1000);
 
 				ESP.restart();
-			} else if (pRequest->arg("action") == "update") {	// This is for update Settings
+			} else if (pParamAction->value() == "update") {	// This is for update Settings
 				uint64_t nNewValue;
 				uint64_t nSuccessCodeMask = 0;
 				bool bWiFiChanges = false;
 				sensor_t *pSensorConfig = esp_camera_sensor_get();
 
 				// =============== Current DateTime =============== //
-				if (pRequest->hasArg("time")) {
-					SetCurrentDatetime(pRequest->arg("time").toInt());
+				const AsyncWebParameter* pParamTime = pRequest->getParam("time");
+				if (pParamTime) {
+					SetCurrentDatetime(pParamTime->value().toInt());
 
 					struct tm currentTime;
 					GetLocalTimeNow(&currentTime);
@@ -809,13 +815,15 @@ void setup() {
 					SET_BIT_TO_MASK(nSuccessCodeMask, IDX_TIME);
 				}
 				// =============== WiFi =============== //
-				if (pRequest->hasArg("ssid") && strcmp(pRequest->arg("ssid").c_str(), g_cSSID) != 0) {
+				const AsyncWebParameter* pParamSSID = pRequest->getParam("ssid");
+				if (pParamSSID && strcmp(pParamSSID->value().c_str(), g_cSSID) != 0) {
 					bWiFiChanges = true;
 
 					SET_BIT_TO_MASK(nSuccessCodeMask, IDX_WIFI_SSID);
 				}
 
-				if (pRequest->hasArg("ssidpwd") && strcmp(pRequest->arg("ssidpwd").c_str(), g_cSSIDPWD) != 0) {
+				const AsyncWebParameter* pParamSSIDPWD = pRequest->getParam("ssidpwd");
+				if (pParamSSIDPWD && strcmp(pParamSSIDPWD->value().c_str(), g_cSSIDPWD) != 0) {
 					bWiFiChanges = true;
 
 					SET_BIT_TO_MASK(nSuccessCodeMask, IDX_WIFI_PWD);
@@ -824,8 +832,8 @@ void setup() {
 				if (bWiFiChanges)
 					SET_BIT_TO_MASK(nSuccessCodeMask, IDX_WIFI_STA);
 
-				if (pRequest->hasArg("wfrci")) {
-					nNewValue = MinutesToTicks(pRequest->arg("wfrci").toInt());
+				if (const AsyncWebParameter* pParam = pRequest->getParam("wfrci")) {
+					nNewValue = MinutesToTicks(pParam->value().toInt());
 
 					if (nNewValue != g_nWiFiRetryConnectInterval) {
 						g_nWiFiRetryConnectInterval = nNewValue;
@@ -834,8 +842,8 @@ void setup() {
 					}
 				}
 
-				if (pRequest->hasArg("ws")) {
-					nNewValue = pRequest->arg("ws").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("ws")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_bWiFiSleep) {
 						g_bWiFiSleep = nNewValue;
@@ -844,8 +852,8 @@ void setup() {
 					}
 				}
 
-				if (pRequest->hasArg("wp")) {
-					nNewValue = pRequest->arg("wp").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("wp")) {
+					nNewValue = pParam->value().toInt();
 
 					if ((wifi_power_t)nNewValue != g_pWiFiPower) {
 						g_pWiFiPower = (wifi_power_t)nNewValue;
@@ -854,8 +862,8 @@ void setup() {
 					}
 				}
 				// =============== SENSOR SHUTDOWN INTERVAL =============== //
-				if (pRequest->hasArg("ssi")) {
-					nNewValue = SecondsToTicks(pRequest->arg("ssi").toInt());
+				if (const AsyncWebParameter* pParam = pRequest->getParam("ssi")) {
+					nNewValue = SecondsToTicks(pParam->value().toInt());
 
 					if (nNewValue != g_nSensorShutdownInterval) {
 						g_nSensorShutdownInterval = nNewValue;
@@ -864,8 +872,8 @@ void setup() {
 					}
 				}
 				// =============== TIMELAPSE START HOUR =============== //
-				if (pRequest->hasArg("timelapsestart")) {
-					nNewValue = pRequest->arg("timelapsestart").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("timelapsestart")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_nEffectiveStartTimelapse) {
 						g_nEffectiveStartTimelapse = (nNewValue == 24) ? 0 : nNewValue;
@@ -874,8 +882,8 @@ void setup() {
 					}
 				}
 				// =============== TIMELAPSE STOP HOUR =============== //
-				if (pRequest->hasArg("timelapsestop")) {
-					nNewValue = pRequest->arg("timelapsestop").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("timelapsestop")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_nEffectiveStopTimelapse) {
 						g_nEffectiveStopTimelapse = (nNewValue == 24) ? 0 : nNewValue;
@@ -884,8 +892,8 @@ void setup() {
 					}
 				}
 				// =============== TIMELAPSE CAPTURE INTERVAL =============== //
-				if (pRequest->hasArg("timelapseinterval")) {
-					nNewValue = MinutesToTicks(pRequest->arg("timelapseinterval").toInt());
+				if (const AsyncWebParameter* pParam = pRequest->getParam("timelapseinterval")) {
+					nNewValue = MinutesToTicks(pParam->value().toInt());
 
 					if (nNewValue != g_nTimelapseInterval) {
 						g_nTimelapseInterval = nNewValue;
@@ -894,8 +902,8 @@ void setup() {
 					}
 				}
 				// =============== TIMELAPSE CAPTURES COUNTER =============== //
-				if (pRequest->hasArg("timelapsecount")) {
-					nNewValue =pRequest->arg("timelapsecount").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("timelapsecount")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_nTimelapseCounter) {
 						g_nTimelapseCounter = nNewValue;
@@ -904,8 +912,8 @@ void setup() {
 					}
 				}
 				// =============== TIMELAPSE FLASH LED BRIGHTNESS =============== //
-				if (pRequest->hasArg("lbt")) {
-					nNewValue = pRequest->arg("lbt").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("lbt")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_nTimelapseLedBrightness) {
 						if (g_nCurrentLedBrightness == g_nTimelapseLedBrightness) {	// If is currently use Flash, update it brightness in real time
@@ -920,8 +928,8 @@ void setup() {
 					}
 				}
 				// =============== MONITORING FLASH LED BRIGHTNESS =============== //
-				if (pRequest->hasArg("lbm")) {
-					nNewValue = pRequest->arg("lbm").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("lbm")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_nMonitoringLedBrightness) {
 						if (g_nCurrentLedBrightness == g_nMonitoringLedBrightness) {	// If is currently use Flash, update it brightness in real time
@@ -936,8 +944,8 @@ void setup() {
 					}
 				}
 				// =============== CAMERA MASTER CLOCK (XCLK) =============== //
-				if (pRequest->hasArg("xclk")) {
-					nNewValue = pRequest->arg("xclk").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("xclk")) {
+					nNewValue = pParam->value().toInt();
 
 					if ((nNewValue * 1000000U) != g_pCameraConfig.xclk_freq_hz) {
 						g_pCameraConfig.xclk_freq_hz = (nNewValue * 1000000U);
@@ -947,8 +955,8 @@ void setup() {
 					}
 				}
 				// =============== PIXEL FORMAT =============== //
-				if (pRequest->hasArg("pf")) {
-					nNewValue = pRequest->arg("pf").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("pf")) {
+					nNewValue = pParam->value().toInt();
 
 					if ((pixformat_t)nNewValue != g_pCameraConfig.pixel_format) {
 						g_pCameraConfig.pixel_format = (pixformat_t)nNewValue;
@@ -957,8 +965,8 @@ void setup() {
 					}
 				}
 				// =============== IMAGE RESOLUTION (Initial & Timelapse) =============== //
-				if (pRequest->hasArg("ifs")) {
-					nNewValue = pRequest->arg("ifs").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("ifs")) {
+					nNewValue = pParam->value().toInt();
 
 					if ((framesize_t)nNewValue != g_pCameraConfig.frame_size) {
 						g_pCameraConfig.frame_size = (framesize_t)nNewValue;
@@ -967,8 +975,8 @@ void setup() {
 					}
 				}
 				// =============== IMAGE COMPRESSION LEVEL =============== //
-				if (pRequest->hasArg("jpegq")) {
-					nNewValue = pRequest->arg("jpegq").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("jpegq")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pCameraConfig.jpeg_quality) {
 						g_pCameraConfig.jpeg_quality = nNewValue;
@@ -978,8 +986,8 @@ void setup() {
 					}
 				}
 				// =============== FRAME BUFFERS COUNT =============== //
-				if (pRequest->hasArg("fbc")) {
-					nNewValue = pRequest->arg("fbc").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("fbc")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pCameraConfig.fb_count) {
 						g_pCameraConfig.fb_count = nNewValue;
@@ -988,8 +996,8 @@ void setup() {
 					}
 				}
 				// =============== STORE FRAME IN =============== //
-				if (pRequest->hasArg("fbl")) {
-					nNewValue = pRequest->arg("fbl").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("fbl")) {
+					nNewValue = pParam->value().toInt();
 
 					if ((camera_fb_location_t)nNewValue != g_pCameraConfig.fb_location) {
 						g_pCameraConfig.fb_location = (camera_fb_location_t)nNewValue;
@@ -998,8 +1006,8 @@ void setup() {
 					}
 				}
 				// =============== FRAME TO GRAB =============== //
-				if (pRequest->hasArg("gm")) {
-					nNewValue = pRequest->arg("gm").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("gm")) {
+					nNewValue = pParam->value().toInt();
 
 					if ((camera_grab_mode_t)nNewValue != g_pCameraConfig.grab_mode) {
 						g_pCameraConfig.grab_mode = (camera_grab_mode_t)nNewValue;
@@ -1008,8 +1016,8 @@ void setup() {
 					}
 				}
 				// =============== IMAGE RESOLUTION (Monitoring) =============== //
-				if (pRequest->hasArg("mfs")) {
-					nNewValue = pRequest->arg("mfs").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("mfs")) {
+					nNewValue = pParam->value().toInt();
 
 					if ((framesize_t)nNewValue != g_pSensorStatus.framesize) {
 						if (pSensorConfig->set_framesize(pSensorConfig, (framesize_t)nNewValue) == 0) {
@@ -1020,8 +1028,8 @@ void setup() {
 					}
 				}
 				// =============== BRIGHTNESS LEVEL =============== //
-				if (pRequest->hasArg("bnl")) {
-					nNewValue = pRequest->arg("bnl").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("bnl")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.brightness) {
 						if (pSensorConfig->set_brightness(pSensorConfig, nNewValue) == 0) {
@@ -1032,8 +1040,8 @@ void setup() {
 					}
 				}
 				// =============== CONTRAST LEVEL =============== //
-				if (pRequest->hasArg("cl")) {
-					nNewValue = pRequest->arg("cl").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("cl")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.contrast) {
 						if (pSensorConfig->set_contrast(pSensorConfig, nNewValue) == 0) {
@@ -1044,8 +1052,8 @@ void setup() {
 					}
 				}
 				// =============== SATURATION LEVEL =============== //
-				if (pRequest->hasArg("sl")) {
-					nNewValue = pRequest->arg("sl").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("sl")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.saturation) {
 						if (pSensorConfig->set_saturation(pSensorConfig, nNewValue) == 0) {
@@ -1056,8 +1064,8 @@ void setup() {
 					}
 				}
 				// =============== SHARPNESS LEVEL =============== //
-				if (pRequest->hasArg("snl")) {
-					nNewValue = pRequest->arg("snl").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("snl")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.sharpness) {
 						if (pSensorConfig->set_sharpness(pSensorConfig, nNewValue) == 0) {
@@ -1068,8 +1076,8 @@ void setup() {
 					}
 				}
 				// =============== NOISE REDUCTION LEVEL =============== //
-				if (pRequest->hasArg("nrl")) {
-					nNewValue = pRequest->arg("nrl").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("nrl")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.denoise) {
 						if (pSensorConfig->set_denoise(pSensorConfig, nNewValue) == 0) {
@@ -1080,8 +1088,8 @@ void setup() {
 					}
 				}
 				// =============== SPECIAL EFFECTS =============== //
-				if (pRequest->hasArg("se")) {
-					nNewValue = pRequest->arg("se").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("se")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.special_effect) {
 						if (pSensorConfig->set_special_effect(pSensorConfig, nNewValue) == 0) {
@@ -1092,8 +1100,8 @@ void setup() {
 					}
 				}
 				// =============== AUTOMATIC WHITE BALANCE PROFILE =============== //
-				if (pRequest->hasArg("wbp")) {
-					nNewValue = pRequest->arg("wbp").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("wbp")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.wb_mode) {
 						if (pSensorConfig->set_wb_mode(pSensorConfig, nNewValue) == 0) {
@@ -1104,8 +1112,8 @@ void setup() {
 					}
 				}
 				// =============== AUTOMATIC WHITE BALANCE =============== //
-				if (pRequest->hasArg("awb")) {
-					nNewValue = pRequest->arg("awb").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("awb")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.awb) {
 						if (pSensorConfig->set_whitebal(pSensorConfig, nNewValue) == 0) {
@@ -1116,8 +1124,8 @@ void setup() {
 					}
 				}
 				// =============== AUTOMATIC WHITE BALANCE GAIN LEVEL =============== //
-				if (pRequest->hasArg("awbg")) {
-					nNewValue = pRequest->arg("awbg").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("awbg")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.awb_gain) {
 						if (pSensorConfig->set_awb_gain(pSensorConfig, nNewValue) == 0) {
@@ -1128,8 +1136,8 @@ void setup() {
 					}
 				}
 				// =============== AUTOMATIC EXPOSURE =============== //
-				if (pRequest->hasArg("aec")) {
-					nNewValue = pRequest->arg("aec").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("aec")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.aec) {
 						if (pSensorConfig->set_exposure_ctrl(pSensorConfig, nNewValue) == 0) {
@@ -1140,8 +1148,8 @@ void setup() {
 					}
 				}
 				// =============== AUTOMATIC EXPOSURE (NIGHT MODE) =============== //
-				if (pRequest->hasArg("aec2")) {
-					nNewValue = pRequest->arg("aec2").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("aec2")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.aec2) {
 						if (pSensorConfig->set_aec2(pSensorConfig, nNewValue) == 0) {
@@ -1152,8 +1160,8 @@ void setup() {
 					}
 				}
 				// =============== AUTOMATIC EXPOSURE LEVEL =============== //
-				if (pRequest->hasArg("ael")) {
-					nNewValue = pRequest->arg("ael").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("ael")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.ae_level) {
 						if (pSensorConfig->set_ae_level(pSensorConfig, nNewValue) == 0) {
@@ -1164,8 +1172,8 @@ void setup() {
 					}
 				}
 				// =============== MANUAL EXPOSURE LEVEL =============== //
-				if (pRequest->hasArg("aev")) {
-					nNewValue = pRequest->arg("aev").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("aev")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.aec_value) {
 						if (pSensorConfig->set_aec_value(pSensorConfig, nNewValue) == 0) {
@@ -1176,8 +1184,8 @@ void setup() {
 					}
 				}
 				// =============== AUTOMATIC GAIN =============== //
-				if (pRequest->hasArg("agc")) {
-					nNewValue = pRequest->arg("agc").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("agc")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.agc) {
 						if (pSensorConfig->set_gain_ctrl(pSensorConfig, nNewValue) == 0) {
@@ -1188,8 +1196,8 @@ void setup() {
 					}
 				}
 				// =============== AUTOMATIC GAIN LEVEL =============== //
-				if (pRequest->hasArg("agcl")) {
-					nNewValue = pRequest->arg("agcl").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("agcl")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.agc_gain) {
 						if (pSensorConfig->set_agc_gain(pSensorConfig, nNewValue) == 0) {
@@ -1200,8 +1208,8 @@ void setup() {
 					}
 				}
 				// =============== MAX AUTOMATIC GAIN LEVEL =============== //
-				if (pRequest->hasArg("gc")) {
-					nNewValue = pRequest->arg("gc").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("gc")) {
+					nNewValue = pParam->value().toInt();
 
 					if ((gainceiling_t)nNewValue != g_pSensorStatus.gainceiling) {
 						if (pSensorConfig->set_gainceiling(pSensorConfig, (gainceiling_t)nNewValue) == 0) {
@@ -1212,8 +1220,8 @@ void setup() {
 					}
 				}
 				// =============== BLACK PIXEL CANCELLATION =============== //
-				if (pRequest->hasArg("bpc")) {
-					nNewValue = pRequest->arg("bpc").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("bpc")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.bpc) {
 						if (pSensorConfig->set_bpc(pSensorConfig, nNewValue) == 0) {
@@ -1224,8 +1232,8 @@ void setup() {
 					}
 				}
 				// =============== WHITE PIXEL CANCELLATION =============== //
-				if (pRequest->hasArg("wpc")) {
-					nNewValue = pRequest->arg("wpc").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("wpc")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.wpc) {
 						if (pSensorConfig->set_wpc(pSensorConfig, nNewValue) == 0) {
@@ -1236,8 +1244,8 @@ void setup() {
 					}
 				}
 				// =============== RAW GAMMA CORRECTION =============== //
-				if (pRequest->hasArg("rgc")) {
-					nNewValue = pRequest->arg("rgc").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("rgc")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.raw_gma) {
 						if (pSensorConfig->set_raw_gma(pSensorConfig, nNewValue) == 0) {
@@ -1248,8 +1256,8 @@ void setup() {
 					}
 				}
 				// =============== VIGNETTE CORRECTION =============== //
-				if (pRequest->hasArg("lenc")) {
-					nNewValue = pRequest->arg("lenc").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("lenc")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.lenc) {
 						if (pSensorConfig->set_lenc(pSensorConfig, nNewValue) == 0) {
@@ -1260,8 +1268,8 @@ void setup() {
 					}
 				}
 				// =============== HORIZONTAL MIRRORING =============== //
-				if (pRequest->hasArg("hflip")) {
-					nNewValue = pRequest->arg("hflip").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("hflip")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.hmirror) {
 						if (pSensorConfig->set_hmirror(pSensorConfig, nNewValue) == 0) {
@@ -1272,8 +1280,8 @@ void setup() {
 					}
 				}
 				// =============== VERTICAL FLIP =============== //
-				if (pRequest->hasArg("vflip")) {
-					nNewValue = pRequest->arg("vflip").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("vflip")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.vflip) {
 						if (pSensorConfig->set_vflip(pSensorConfig, nNewValue) == 0) {
@@ -1284,8 +1292,8 @@ void setup() {
 					}
 				}
 				// =============== DIGITAL DOWNSAMPLE =============== //
-				if (pRequest->hasArg("dcw")) {
-					nNewValue = pRequest->arg("dcw").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("dcw")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.dcw) {
 						if (pSensorConfig->set_dcw(pSensorConfig, nNewValue) == 0) {
@@ -1296,8 +1304,8 @@ void setup() {
 					}
 				}
 				// =============== COLOR BARS (TEST MODE) =============== //
-				if (pRequest->hasArg("cb")) {
-					nNewValue = pRequest->arg("cb").toInt();
+				if (const AsyncWebParameter* pParam = pRequest->getParam("cb")) {
+					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.colorbar) {
 						if (pSensorConfig->set_colorbar(pSensorConfig, nNewValue) == 0) {
@@ -1308,11 +1316,11 @@ void setup() {
 					}
 				}
 				// =============== FLASH LED CONTROL =============== //
-				if (pRequest->hasArg("fls")) {
+				if (const AsyncWebParameter* pParam = pRequest->getParam("fls")) {
 					nNewValue = 0;
 
 					if (g_nCurrentLedBrightness == 0) {
-						if (pRequest->arg("fls") == "0")	// Monitoring
+						if ( pParam->value() == "0")	// Monitoring
 							nNewValue = g_nMonitoringLedBrightness;
 						else															// Timelapse
 							nNewValue = g_nTimelapseLedBrightness;
@@ -1330,10 +1338,10 @@ void setup() {
 					pRequest->send(200, F("text/plain"), cBuffer);
 
 					if (bWiFiChanges) { // Update WiFi values after response the request. in otherwise the message is not sended.
-						strncpy(g_cSSID, pRequest->arg("ssid").c_str(), sizeof(g_cSSID) - 1);
+						strncpy(g_cSSID, pRequest->arg("ssid").c_str(), sizeof(g_cSSID) - 1);	// TODO:...
 						g_cSSID[sizeof(g_cSSID) - 1] = '\0';
 
-						strncpy(g_cSSIDPWD, pRequest->arg("ssidpwd").c_str(), sizeof(g_cSSIDPWD) - 1);
+						strncpy(g_cSSIDPWD, pRequest->arg("ssidpwd").c_str(), sizeof(g_cSSIDPWD) - 1);	// TODO: ..
 						g_cSSIDPWD[sizeof(g_cSSIDPWD) - 1] = '\0';
 					}
 
@@ -1352,7 +1360,7 @@ void setup() {
 
 					return;
 				}
-			} else if (pRequest->arg("action") == "refresh") { // This is for refresh Panel values
+			} else if (pParamAction->value() == "refresh") { // This is for refresh Panel values
 				char cBuffer[278];
 				time_t pTimeNow = time(nullptr);
 
@@ -1419,29 +1427,27 @@ void setup() {
 
 				pRequest->send(200, F("text/plain"), cBuffer);
 				return;
-			} else if (pRequest->arg("action") == "list") {	// This returns file list from any directory in the SD Card
-				if (pRequest->hasArg("folder")) {
+			} else if (pParamAction->value() == "list") {	// This returns file list from any directory in the SD Card
+				if (const AsyncWebParameter* pParam = pRequest->getParam("folder")) {
 					AsyncResponseStream *pResponseStream = pRequest->beginResponseStream(F("text/plain"));
 
 					if (!SafeSDAccess([&]() {
 						bool bFirst = true;
-						File pWorkingDirectory = SD_MMC.open("/" + pRequest->arg("folder"));
+						char cPath[64];
+
+						snprintf(cPath, sizeof(cPath), "/%s", pParam->value().c_str());
+
+						File pWorkingDirectory = SD_MMC.open(cPath);
 						File pFile = pWorkingDirectory.openNextFile();
 
 						while (pFile) {
-							const char* szFilePath = pFile.name();
-
 							if (!pFile.isDirectory()) {
 								if (!bFirst)
 									pResponseStream->print(":");
 								else
 									bFirst = false;
 
-								const char* szFileName = strrchr(szFilePath, '/');
-								if (szFileName != nullptr)
-									pResponseStream->print(szFileName + 1);
-								else
-									pResponseStream->print(szFilePath);
+								pResponseStream->print(pFile.name());
 							}
 
 							pFile.close();
@@ -1457,7 +1463,7 @@ void setup() {
 				}
 
 				return;
-			} else if (pRequest->arg("action") == "capture") {
+			} else if (pParamAction->value() == "capture") {
 				if (g_nOTAProgress > 0) {
 					if (digitalRead(PWDN_GPIO_NUM) == LOW)	// If is working
 						digitalWrite(PWDN_GPIO_NUM, HIGH);	// turn it off
@@ -1511,7 +1517,7 @@ void setup() {
 
 				pRequest->send(pResponse);
 				return;
-			} else if (pRequest->arg("action") == "tss") {	// Take a snapshot
+			} else if (pParamAction->value() == "tss") {	// Take a snapshot
 				if (g_nOTAProgress > 0) {
 					pRequest->send(500, F("text/plain"), F("Error: Actualización en curso."));
 					return;
@@ -1535,12 +1541,14 @@ void setup() {
 						pSensorConfig->set_dcw(pSensorConfig, 0);
 					}
 
-					if (pRequest->arg("flash") == "1") {
-						g_nCurrentLedBrightness = g_nTimelapseLedBrightness;
+					if (const AsyncWebParameter* pParam = pRequest->getParam("flash")) {
+						if (pParam->value() == "1") {
+							g_nCurrentLedBrightness = g_nTimelapseLedBrightness;
 
-						ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
+							ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
 
-						vTaskDelay(2000 / portTICK_PERIOD_MS);	// 2000ms
+							vTaskDelay(2000 / portTICK_PERIOD_MS);	// 2000ms
+						}
 					}
 
 					camera_fb_t *pCameraFrameBuffer = esp_camera_fb_get();
