@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V1_0522_044WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V1_0522_0458WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -1338,10 +1338,10 @@ void setup() {
 					pRequest->send(200, F("text/plain"), cBuffer);
 
 					if (bWiFiChanges) { // Update WiFi values after response the request. in otherwise the message is not sended.
-						strncpy(g_cSSID, pRequest->arg("ssid").c_str(), sizeof(g_cSSID) - 1);	// TODO:...
+						strncpy(g_cSSID, pParamSSID->value().c_str(), sizeof(g_cSSID) - 1);
 						g_cSSID[sizeof(g_cSSID) - 1] = '\0';
 
-						strncpy(g_cSSIDPWD, pRequest->arg("ssidpwd").c_str(), sizeof(g_cSSIDPWD) - 1);	// TODO: ..
+						strncpy(g_cSSIDPWD, pParamSSIDPWD->value().c_str(), sizeof(g_cSSIDPWD) - 1);
 						g_cSSIDPWD[sizeof(g_cSSIDPWD) - 1] = '\0';
 					}
 
