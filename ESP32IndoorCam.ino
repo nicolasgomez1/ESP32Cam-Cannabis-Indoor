@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V1_0521_1337WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V1_0522_0246WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -245,14 +245,14 @@ bool SafeSDAccess(std::function<void()> fn) {
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Writes a line of text to a file on the SD card, always wrapped in SafeSDAccess for thread-safe access.
-// - cFileName: Path of the file to write to.
-// - cBuffer: Text string to be written.
+// - szFileName: Path of the file to write to.
+// - szBuffer: Text string to be written.
 // - bAppend: If true, appends to the file; otherwise, overwrites it.
-static void WriteToSD(const char* cFileName, const char* cBuffer, bool bAppend) {
+static void WriteToSD(const char* szFileName, const char* szBuffer, bool bAppend) {
 	SafeSDAccess([&]() {
-		File pFile = SD_MMC.open(cFileName, bAppend ? FILE_APPEND : FILE_WRITE);
+		File pFile = SD_MMC.open(szFileName, bAppend ? FILE_APPEND : FILE_WRITE);
 		if (pFile) {
-			pFile.println(cBuffer);
+			pFile.println(szBuffer);
 
 			pFile.close();
 		}
@@ -262,18 +262,18 @@ static void WriteToSD(const char* cFileName, const char* cBuffer, bool bAppend) 
 // Writes a text string to a file on the SD card using an atomic write pattern, always wrapped in SafeSDAccess for thread-safe access.
 // Writes to a temporary file first, verifies the content matches the input, then replaces the target file.
 // If verification fails, the temporary file is removed and the target file is left unchanged.
-// - cFileName: Path of the file to write to.
-// - cBuffer: Text string to be written.
-static void WriteToSDAtomic(const char* cFileName, const char* cBuffer) {
+// - szFileName: Path of the file to write to.
+// - szBuffer: Text string to be written.
+static void WriteToSDAtomic(const char* szFileName, const char* szBuffer) {
 	SafeSDAccess([&]() {
 		char cTempFileName[64];
-		snprintf(cTempFileName, sizeof(cTempFileName), "%s.atomic", cFileName);
+		snprintf(cTempFileName, sizeof(cTempFileName), "%s.atomic", szFileName);
 
 		File pTempFile = SD_MMC.open(cTempFileName, FILE_WRITE);
 		if (!pTempFile)
 			return;
 
-		pTempFile.print(cBuffer);
+		pTempFile.print(szBuffer);
 		pTempFile.close();
 
 		File pFile = SD_MMC.open(cTempFileName, FILE_READ);
@@ -282,30 +282,30 @@ static void WriteToSDAtomic(const char* cFileName, const char* cBuffer) {
 			return;
 		}
 
-		char cContent[strlen(cBuffer) + 1] = {};
+		char cContent[strlen(szBuffer) + 1] = {};
 		pFile.readBytes(cContent, sizeof(cContent) - 1);
 
 		pFile.close();
 
-		if (strcmp(cContent, cBuffer) != 0) {
+		if (strcmp(cContent, szBuffer) != 0) {
 			SD_MMC.remove(cTempFileName);
 			return;
 		}
 
-		SD_MMC.remove(cFileName);
-		SD_MMC.rename(cTempFileName, cFileName);
+		SD_MMC.remove(szFileName);
+		SD_MMC.rename(cTempFileName, szFileName);
 	});
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Logs a formatted message with severity and timestamp to a daily SD log file via an async queue.
 // Parameters:
 // - nType: Log severity (INFO, WARN, ERROR).
-// - cFormat: printf-style format string with optional arguments.
+// - szFormat: printf-style format string with optional arguments.
 // Behavior:
 // - Prepends timestamp (DD/MM/YYYY HH:MM:SS) and severity tag ([INFO], [WARN], [ERROR]).
 // - Enqueues the formatted message for writing to a daily log file (/logs/logging_DD_MM_YYYY.txt).
 // - Non-blocking: if the queue is full, the message is silently dropped.
-static void LOGGER(ERR_TYPE nType, const char* cFormat, ...) {
+static void LOGGER(ERR_TYPE nType, const char* szFormat, ...) {
 	LogMessage pMSG;
 	char cPrintType[9];
 	struct tm currentTime;
@@ -321,8 +321,8 @@ static void LOGGER(ERR_TYPE nType, const char* cFormat, ...) {
 	int nOffset = snprintf(pMSG.cBuffer, sizeof(pMSG.cBuffer), "%02d/%02d/%04d %02d:%02d:%02d %s", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec, cPrintType);
 
 	va_list args;
-	va_start(args, cFormat);
-	vsnprintf(pMSG.cBuffer + nOffset, sizeof(pMSG.cBuffer) - nOffset, cFormat, args);
+	va_start(args, szFormat);
+	vsnprintf(pMSG.cBuffer + nOffset, sizeof(pMSG.cBuffer) - nOffset, szFormat, args);
 	va_end(args);
 
 	snprintf(pMSG.cFileName, sizeof(pMSG.cFileName), "/logs/logging_%02d_%02d_%04d.txt", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900);
@@ -431,7 +431,7 @@ void Thread_WiFiReconnect(void*) {
 			}
 
 			if (WiFi.status() == WL_CONNECTED) {
-				LOGGER(INFO, "Connected to WiFi SSID: %s PASSWORD: %s. IP: %s.", g_cSSID, g_cSSIDPWD, WiFi.localIP().toString().c_str());
+				LOGGER(INFO, "Connected to WiFi SSID: %s PASSWORD: %s. IP: %d.%d.%d.%d.", g_cSSID, g_cSSIDPWD, WiFi.localIP()[0], WiFi.localIP()[1], WiFi.localIP()[2], WiFi.localIP()[3]);
 
 				WiFi.softAPdisconnect(true);
 				WiFi.mode(WIFI_STA);
@@ -507,9 +507,9 @@ void setup() {
 	LOGGER(INFO, "Firmware Version: %s", FIRMWAREVERSION);
 
 	if (pReason != ESP_RST_POWERON && pReason != ESP_RST_SW) {
-		const char* cReasons[] = { "Unknown", "Power on", "External pin", "Software", "Panic/Exception", "Interrupt watchdog", "Task watchdog", "Other watchdog", "Deepsleep", "Brownout", "SDIO" };
+		const char* szReasons[] = { "Unknown", "Power on", "External pin", "Software", "Panic/Exception", "Interrupt watchdog", "Task watchdog", "Other watchdog", "Deepsleep", "Brownout", "SDIO" };
 
-		LOGGER(WARN, "Reset reason: %s", cReasons[pReason]);
+		LOGGER(WARN, "Reset reason: %s", szReasons[pReason]);
 	}
 
 	LOGGER(INFO, "Initializing Pins...");
@@ -1421,26 +1421,27 @@ void setup() {
 				return;
 			} else if (pRequest->arg("action") == "list") {	// This returns file list from any directory in the SD Card
 				if (pRequest->hasArg("folder")) {
+					AsyncResponseStream *pResponseStream = pRequest->beginResponseStream(F("text/plain"));
+
 					if (!SafeSDAccess([&]() {
 						bool bFirst = true;
-						String strFileName, strResponse;
 						File pWorkingDirectory = SD_MMC.open("/" + pRequest->arg("folder"));
 						File pFile = pWorkingDirectory.openNextFile();
 
 						while (pFile) {
-							strFileName = String(pFile.name());
+							const char* szFilePath = pFile.name();
 
 							if (!pFile.isDirectory()) {
 								if (!bFirst)
-									strResponse += ":";
+									pResponseStream->print(":");
 								else
 									bFirst = false;
 
-								int nLastSlash = strFileName.lastIndexOf('/');
-								if (nLastSlash >= 0)
-									strResponse += strFileName.substring(nLastSlash + 1);
+								const char* szFileName = strrchr(szFilePath, '/');
+								if (szFileName != nullptr)
+									pResponseStream->print(szFileName + 1);
 								else
-									strResponse += strFileName;
+									pResponseStream->print(szFilePath);
 							}
 
 							pFile.close();
@@ -1449,8 +1450,7 @@ void setup() {
 						}
 
 						pWorkingDirectory.close();
-
-						pRequest->send(200, F("text/plain"), strResponse);
+						pRequest->send(pResponseStream);
 					})) {
 						pRequest->send(500, F("text/plain"), F("No hay una Tarjeta SD conectada."));
 					}
