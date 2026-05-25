@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V1_0524_1802WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V1_0525_1432WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -1701,7 +1701,7 @@ void loop() {
 			static uint64_t nTimelapseInterval = 0;
 
 			if ((nCurrentMillis - nTimelapseInterval) >= g_nTimelapseInterval) {
-				if ((g_nEffectiveStartTimelapse > 0 || g_nEffectiveStopTimelapse > 0) &&	// Check if either the timelapse start time or stop time is set (greater than 0)
+				if ((g_nEffectiveStartTimelapse != g_nEffectiveStopTimelapse) &&
 					(g_nEffectiveStartTimelapse < g_nEffectiveStopTimelapse && currentTime.tm_hour >= g_nEffectiveStartTimelapse && currentTime.tm_hour < g_nEffectiveStopTimelapse) || // Normal case: timelapse start time is before stop time (e.g., from 7 AM to 7 PM)
 					(g_nEffectiveStartTimelapse >= g_nEffectiveStopTimelapse && (currentTime.tm_hour >= g_nEffectiveStartTimelapse || currentTime.tm_hour < g_nEffectiveStopTimelapse))) {	// Special case: timelapse schedule crosses midnight (e.g., from 8 PM to 6 AM)
 					nTimelapseInterval = nCurrentMillis;
