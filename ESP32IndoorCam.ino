@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V1_0525_1432WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0525_1510WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -1446,6 +1446,8 @@ void setup() {
 								bFirst = false;
 
 							pResponseStream->print(pFile.name());
+							pResponseStream->print("|");
+							pResponseStream->print(pFile.size());
 						}
 
 						pFile.close();
