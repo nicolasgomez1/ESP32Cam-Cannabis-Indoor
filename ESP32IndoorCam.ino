@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V1_0522_0554WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V1_0524_1802WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -652,7 +652,7 @@ void setup() {
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// AUTOMATIC WHITE BALANCE
 			g_pSensorStatus.awb = atoi(cBuffer);
 			///////////////////////////////////////////////////
-			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// AUTOMATIC WHITE BALANCE GAIN LEVEL
+			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// AUTOMATIC WHITE BALANCE GAIN
 			g_pSensorStatus.awb_gain = atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// AUTOMATIC EXPOSURE
@@ -1123,7 +1123,7 @@ void setup() {
 						}
 					}
 				}
-				// =============== AUTOMATIC WHITE BALANCE GAIN LEVEL =============== //
+				// =============== AUTOMATIC WHITE BALANCE GAIN =============== //
 				if (const AsyncWebParameter* pParam = pRequest->getParam("awbg")) {
 					nNewValue = pParam->value().toInt();
 
@@ -1407,7 +1407,7 @@ void setup() {
 					data[28] → Sensor Special Effect
 					data[29] → Sensor Automatic White Balance Profile
 					data[30] → Sensor Automatic White Balance Enable
-					data[31] → Sensor Automatic White Balance Gain Level
+					data[31] → Sensor Automatic White Balance Gain
 					data[32] → Sensor Automatic Exposure Enable
 					data[33] → Sensor Automatic Exposure (Night Mode) Enable
 					data[34] → Sensor Auto Exposure Compensation Level
@@ -1428,38 +1428,35 @@ void setup() {
 				pRequest->send(200, F("text/plain"), cBuffer);
 				return;
 			} else if (pParamAction->value() == "list") {	// This returns file list from any directory in the SD Card
-				if (const AsyncWebParameter* pParam = pRequest->getParam("folder")) {
+				if (!SafeSDAccess([&]() {
 					AsyncResponseStream *pResponseStream = pRequest->beginResponseStream(F("text/plain"));
+					bool bFirst = true;
+					char cPath[64];
 
-					if (!SafeSDAccess([&]() {
-						bool bFirst = true;
-						char cPath[64];
+					snprintf(cPath, sizeof(cPath), "/%s", pRequest->getParam("folder")->value().c_str());
 
-						snprintf(cPath, sizeof(cPath), "/%s", pParam->value().c_str());
+					File pWorkingDirectory = SD_MMC.open(cPath);
+					File pFile = pWorkingDirectory.openNextFile();
 
-						File pWorkingDirectory = SD_MMC.open(cPath);
-						File pFile = pWorkingDirectory.openNextFile();
+					while (pFile) {
+						if (!pFile.isDirectory()) {
+							if (!bFirst)
+								pResponseStream->print(":");
+							else
+								bFirst = false;
 
-						while (pFile) {
-							if (!pFile.isDirectory()) {
-								if (!bFirst)
-									pResponseStream->print(":");
-								else
-									bFirst = false;
-
-								pResponseStream->print(pFile.name());
-							}
-
-							pFile.close();
-
-							pFile = pWorkingDirectory.openNextFile();
+							pResponseStream->print(pFile.name());
 						}
 
-						pWorkingDirectory.close();
-						pRequest->send(pResponseStream);
-					})) {
-						pRequest->send(500, F("text/plain"), F("No hay una Tarjeta SD conectada."));
+						pFile.close();
+
+						pFile = pWorkingDirectory.openNextFile();
 					}
+
+					pWorkingDirectory.close();
+					pRequest->send(pResponseStream);
+				})) {
+					pRequest->send(500, F("text/plain"), F("No hay una Tarjeta SD conectada."));
 				}
 
 				return;
@@ -1741,7 +1738,6 @@ void loop() {
 							} else {
 								SafeSDAccess([&]() {
 									char cFilename[28];
-
 									snprintf(cFilename, sizeof(cFilename), "/timelapse/capture%05d.jpg", g_nTimelapseCounter);
 
 									File pFile = SD_MMC.open(cFilename, FILE_WRITE);
