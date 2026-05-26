@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0525_1510WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0525_2211WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -1458,7 +1458,47 @@ void setup() {
 					pWorkingDirectory.close();
 					pRequest->send(pResponseStream);
 				})) {
-					pRequest->send(500, F("text/plain"), F("No hay una Tarjeta SD conectada."));
+					pRequest->send(500, F("text/plain"), F("NO_SD"));
+				}
+
+				return;
+			} else if (pParamAction->value() == "cleanfolder") {
+				if (!SafeSDAccess([&]() {
+					if (const AsyncWebParameter* pParam = pRequest->getParam("folder")) {
+						uint32_t nDeleteFilesCount = 0;
+						char cPath[64];
+						char cFilePath[64];
+
+						snprintf(cPath, sizeof(cPath), "/%s", pRequest->getParam("folder")->value().c_str());
+
+						File pWorkingDirectory = SD_MMC.open(cPath);
+						File pFile = pWorkingDirectory.openNextFile();
+
+						while (pFile) {
+							if (!pFile.isDirectory()) {
+								snprintf(cFilePath, sizeof(cFilePath), "%s", pFile.path());
+
+								pFile.close();
+
+								SD_MMC.remove(cFilePath);
+
+								nDeleteFilesCount++;
+							} else {
+								pFile.close();
+							}
+
+							pFile = pWorkingDirectory.openNextFile();
+						}
+
+						pWorkingDirectory.close();
+
+						char cDeletedFileCount[12];
+						snprintf(cDeletedFileCount, sizeof(cDeletedFileCount), "%u", nDeleteFilesCount);
+
+						pRequest->send(200, F("text/plain"), cDeletedFileCount);
+					}
+				})) {
+					pRequest->send(500, F("text/plain"), F("NO_SD"));
 				}
 
 				return;
@@ -1467,17 +1507,17 @@ void setup() {
 					if (digitalRead(PWDN_GPIO_NUM) == LOW)	// If is working
 						digitalWrite(PWDN_GPIO_NUM, HIGH);	// turn it off
 
-					pRequest->send(500, F("text/plain"), F("Error: Actualización de Firmware en curso."));
+					pRequest->send(500, F("text/plain"), F("OTA_IN_PROGRESS"));
 					return;
 				}
 
 				if (g_bTakingSnapshot) {
-					pRequest->send(500, F("text/plain"), F("Error: Capturando instantánea."));
+					pRequest->send(500, F("text/plain"), F("TAKING_SNAPSHOT"));
 					return;
 				}
 
 				if (g_bTakingTimelapse) {
-					pRequest->send(500, F("text/plain"), F("Error: Capturando Timelapse."));
+					pRequest->send(500, F("text/plain"), F("TAKING_TIMELAPSE"));
 					return;
 				}
 
@@ -1495,7 +1535,7 @@ void setup() {
 
 				camera_fb_t *pCameraFrameBuffer = esp_camera_fb_get();
 				if (!pCameraFrameBuffer) {
-					pRequest->send(500, F("text/plain"), F("Error en el Frame Buffer de la Cámara."));
+					pRequest->send(500, F("text/plain"), F("FRAME_BUFFER"));
 					return;
 				}
 
@@ -1518,12 +1558,12 @@ void setup() {
 				return;
 			} else if (pParamAction->value() == "tss") {	// Take a snapshot
 				if (g_nOTAProgress > 0) {
-					pRequest->send(500, F("text/plain"), F("Error: Actualización en curso."));
+					pRequest->send(500, F("text/plain"), F("OTA_IN_PROGRESS"));
 					return;
 				}
 
 				if (g_bTakingTimelapse) {
-					pRequest->send(500, F("text/plain"), F("Error: Capturando Timelapse."));
+					pRequest->send(500, F("text/plain"), F("TAKING_TIMELAPSE"));
 					return;
 				}
 
@@ -1552,7 +1592,7 @@ void setup() {
 
 					camera_fb_t *pCameraFrameBuffer = esp_camera_fb_get();
 					if (!pCameraFrameBuffer) {
-						pRequest->send(500, F("text/plain"), F("Error en el Frame Buffer de la Cámara."));
+						pRequest->send(500, F("text/plain"), F("FRAME_BUFFER"));
 						return;
 					}
 
@@ -1590,7 +1630,7 @@ void setup() {
 
 					pRequest->send(pResponse);
 				})) {
-					pRequest->send(500, F("text/plain"), F("No hay una Tarjeta SD conectada."));
+					pRequest->send(500, F("text/plain"), F("NO_SD"));
 				}
 
 				return;
