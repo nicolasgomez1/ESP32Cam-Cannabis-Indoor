@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0525_2326WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0525_2331WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -795,9 +795,7 @@ void setup() {
 			if (pParamAction->value() == "restart") {
 				LOGGER(INFO, "Restarting Controller by Web command.");
 
-				delay(1000);
-
-				ESP.restart();
+				bRestart = true;
 			} else if (pParamAction->value() == "update") {	// This is for update Settings
 				uint64_t nNewValue;
 				uint64_t nSuccessCodeMask = 0;
