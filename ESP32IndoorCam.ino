@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0525_2331WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0526_1813WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -1496,6 +1496,26 @@ void setup() {
 
 						pRequest->send(200, F("text/plain"), cDeletedFileCount);
 					}
+				})) {
+					pRequest->send(500, F("text/plain"), F("NO_SD"));
+				}
+
+				return;
+			} else if (pParamAction->value() == "deletefile") {	// Delete files from any SD folder
+				if (!SafeSDAccess([&]() {
+					bool bSuccess = true;
+					char cPath[64];
+
+					snprintf(cPath, sizeof(cPath), "/%s/%s", pRequest->getParam("folder")->value().c_str(), pRequest->getParam("file")->value().c_str());
+
+					if (SD_MMC.exists(cPath)) {
+						if (!SD_MMC.remove(cPath))
+							bSuccess = false;
+					} else {
+						bSuccess = false;
+					}
+
+					pRequest->send(bSuccess ? 200 : 500, F("text/plain"), bSuccess ? F("DELETE_FILE_SCS") : F("DELETE_FILE_ERROR"));
 				})) {
 					pRequest->send(500, F("text/plain"), F("NO_SD"));
 				}
