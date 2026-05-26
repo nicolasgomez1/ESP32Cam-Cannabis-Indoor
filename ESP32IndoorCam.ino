@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0525_2211WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0525_2326WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -134,6 +134,7 @@ camera_config_t g_pCameraConfig;
 camera_status_t g_pSensorStatus;
 
 // Internal Variables
+bool bRestart = false;
 bool bForceTryConnectWiFi = true;
 uint64_t g_nLastCameraActivity = 0;
 uint8_t g_nCurrentLedBrightness = 0;
@@ -1653,9 +1654,13 @@ void setup() {
 		if (bUpdate) {
 			LOGGER(INFO, "Restarting Controller to do a Firmware Update.");
 
-			delay(1000);
+			pRequest->send(200, F("text/plain"), F("OTA_SCS"));
 
-			ESP.restart();
+			bRestart = true;
+		} else {
+			LOGGER(ERROR, "Final OTA check failed.");
+
+			pRequest->send(500, F("text/plain"), F("OTA_ERR"));
 		}
 	}, [](AsyncWebServerRequest* pRequest, String strFileName, size_t nIndex, uint8_t* nData, size_t nLength, bool bFinal) {
 		static bool bUpdateError = false;
@@ -1716,6 +1721,12 @@ void loop() {
 		time_t pTimeNow = time(nullptr);
 		struct tm currentTime;
 		localtime_r(&pTimeNow, &currentTime);
+		// ================================================== OTA Section ================================================== //
+		if (bRestart) {
+			delay(2000);
+
+			ESP.restart();
+		}
 		// ================================================== WiFi Section ================================================== //
 		{
 			static uint64_t nLastReconnectAttemptInterval = 0;
