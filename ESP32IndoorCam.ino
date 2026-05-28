@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0528_1417WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0528_1753WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -778,9 +778,9 @@ void setup() {
 	LOGGER(INFO, "Setting up Web Server...");
 
 	// Global headers to prevent CORS problems.
-	DefaultHeaders::Instance().addHeader(F("Access-Control-Allow-Origin"), F("*"));
-	DefaultHeaders::Instance().addHeader(F("Access-Control-Allow-Methods"), F("GET, POST, OPTIONS"));
-	DefaultHeaders::Instance().addHeader(F("Access-Control-Allow-Headers"), F("*"));
+	DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+	DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+	DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "*");
 
 	// Static files server
 	// Static serving of the logs, snapshots & timelapse folders and all the files inside of them
@@ -857,7 +857,7 @@ void setup() {
 					data[46] → Sensor Color Bars (Test Mode) Enable
 				*/
 
-				pRequest->send(200, F("text/plain"), cBuffer);
+				pRequest->send(200, "text/plain", cBuffer);
 				return;
 			} else if (pParamAction->value() == "update") {	// This is for update Settings
 				uint64_t nNewValue;
@@ -1397,7 +1397,7 @@ void setup() {
 					char cBuffer[24];
 					snprintf(cBuffer, sizeof(cBuffer), "MSG%llu", nSuccessCodeMask);
 
-					pRequest->send(200, F("text/plain"), cBuffer);
+					pRequest->send(200, "text/plain", cBuffer);
 
 					if (bWiFiChanges) { // Update WiFi values after response the request. in otherwise the message is not sended.
 						strncpy(g_cSSID, pParamSSID->value().c_str(), sizeof(g_cSSID) - 1);
@@ -1428,7 +1428,7 @@ void setup() {
 				bRestart = true;
 			} else if (pParamAction->value() == "list") {	// This returns file list from any directory in the SD Card
 				if (!SafeSDAccess([&]() {
-					AsyncResponseStream *pResponseStream = pRequest->beginResponseStream(F("text/plain"));
+					AsyncResponseStream *pResponseStream = pRequest->beginResponseStream("text/plain");
 					bool bFirst = true;
 					char cPath[64];
 
@@ -1457,7 +1457,7 @@ void setup() {
 					pWorkingDirectory.close();
 					pRequest->send(pResponseStream);
 				})) {
-					pRequest->send(500, F("text/plain"), F("NO_SD"));
+					pRequest->send(500, "text/plain", "NO_SD");
 				}
 
 				return;
@@ -1494,10 +1494,10 @@ void setup() {
 						char cDeletedFileCount[12];
 						snprintf(cDeletedFileCount, sizeof(cDeletedFileCount), "%u", nDeleteFilesCount);
 
-						pRequest->send(200, F("text/plain"), cDeletedFileCount);
+						pRequest->send(200, "text/plain", cDeletedFileCount);
 					}
 				})) {
-					pRequest->send(500, F("text/plain"), F("NO_SD"));
+					pRequest->send(500, "text/plain", "NO_SD");
 				}
 
 				return;
@@ -1515,9 +1515,9 @@ void setup() {
 						bSuccess = false;
 					}
 
-					pRequest->send(bSuccess ? 200 : 500, F("text/plain"), bSuccess ? F("DELETE_FILE_SCS") : F("DELETE_FILE_ERROR"));
+					pRequest->send(bSuccess ? 200 : 500, "text/plain", bSuccess ? "DELETE_FILE_SCS" : "DELETE_FILE_ERROR");
 				})) {
-					pRequest->send(500, F("text/plain"), F("NO_SD"));
+					pRequest->send(500, "text/plain", "NO_SD");
 				}
 
 				return;
@@ -1526,17 +1526,17 @@ void setup() {
 					if (digitalRead(PWDN_GPIO_NUM) == LOW)	// If is working
 						digitalWrite(PWDN_GPIO_NUM, HIGH);	// turn it off
 
-					pRequest->send(500, F("text/plain"), F("OTA_IN_PROGRESS"));
+					pRequest->send(500, "text/plain", "OTA_IN_PROGRESS");
 					return;
 				}
 
 				if (g_bTakingSnapshot) {
-					pRequest->send(500, F("text/plain"), F("TAKING_SNAPSHOT"));
+					pRequest->send(500, "text/plain", "TAKING_SNAPSHOT");
 					return;
 				}
 
 				if (g_bTakingTimelapse) {
-					pRequest->send(500, F("text/plain"), F("TAKING_TIMELAPSE"));
+					pRequest->send(500, "text/plain", "TAKING_TIMELAPSE");
 					return;
 				}
 
@@ -1554,20 +1554,20 @@ void setup() {
 
 				camera_fb_t *pCameraFrameBuffer = esp_camera_fb_get();
 				if (!pCameraFrameBuffer) {
-					pRequest->send(500, F("text/plain"), F("FRAME_BUFFER"));
+					pRequest->send(500, "text/plain", "FRAME_BUFFER");
 					return;
 				}
 
-				AsyncWebServerResponse *pResponse = pRequest->beginResponse_P(200, F("image/jpeg"), pCameraFrameBuffer->buf, pCameraFrameBuffer->len);
-				pResponse->addHeader(F("Content-Disposition"), F("inline; filename=capture.jpg"));
-				pResponse->addHeader(F("Cache-Control"), F("no-cache, no-store, must-revalidate"));
-				pResponse->addHeader(F("Access-Control-Expose-Headers"), F("X-Flash-Status, X-Timestamp"));
-				pResponse->addHeader(F("X-Flash-Status"), (g_nCurrentLedBrightness > 0) ? "1" : "0");
+				AsyncWebServerResponse *pResponse = pRequest->beginResponse_P(200, "image/jpeg", pCameraFrameBuffer->buf, pCameraFrameBuffer->len);
+				pResponse->addHeader("Content-Disposition", "inline; filename=capture.jpg");
+				pResponse->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+				pResponse->addHeader("Access-Control-Expose-Headers", "X-Flash-Status, X-Timestamp");
+				pResponse->addHeader("X-Flash-Status", (g_nCurrentLedBrightness > 0) ? "1" : "0");
 
 				char cBuffer[11];
 				snprintf(cBuffer, sizeof(cBuffer), "%lu", (unsigned long)time(nullptr));
 
-				pResponse->addHeader(F("X-Timestamp"), cBuffer);
+				pResponse->addHeader("X-Timestamp", cBuffer);
 
 				pRequest->onDisconnect([pCameraFrameBuffer]() {
 					esp_camera_fb_return(pCameraFrameBuffer);
@@ -1577,12 +1577,12 @@ void setup() {
 				return;
 			} else if (pParamAction->value() == "tss") {	// Take a snapshot
 				if (g_nOTAProgress > 0) {
-					pRequest->send(500, F("text/plain"), F("OTA_IN_PROGRESS"));
+					pRequest->send(500, "text/plain", "OTA_IN_PROGRESS");
 					return;
 				}
 
 				if (g_bTakingTimelapse) {
-					pRequest->send(500, F("text/plain"), F("TAKING_TIMELAPSE"));
+					pRequest->send(500, "text/plain", "TAKING_TIMELAPSE");
 					return;
 				}
 
@@ -1611,7 +1611,7 @@ void setup() {
 
 					camera_fb_t *pCameraFrameBuffer = esp_camera_fb_get();
 					if (!pCameraFrameBuffer) {
-						pRequest->send(500, F("text/plain"), F("FRAME_BUFFER"));
+						pRequest->send(500, "text/plain", "FRAME_BUFFER");
 						return;
 					}
 
@@ -1635,9 +1635,9 @@ void setup() {
 							LOGGER(INFO, "Snapshot save to: %s", cFilename);
 					}
 
-					AsyncWebServerResponse *pResponse = pRequest->beginResponse_P(200, F("image/jpeg"), pCameraFrameBuffer->buf, pCameraFrameBuffer->len);
-					pResponse->addHeader(F("Content-Disposition"), F("inline; filename=capture.jpg"));
-					pResponse->addHeader(F("Cache-Control"), F("no-cache, no-store, must-revalidate"));
+					AsyncWebServerResponse *pResponse = pRequest->beginResponse_P(200, "image/jpeg", pCameraFrameBuffer->buf, pCameraFrameBuffer->len);
+					pResponse->addHeader("Content-Disposition", "inline; filename=capture.jpg");
+					pResponse->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
 					pRequest->onDisconnect([pCameraFrameBuffer]() {
 						esp_camera_fb_return(pCameraFrameBuffer);
@@ -1647,21 +1647,21 @@ void setup() {
 
 					pRequest->send(pResponse);
 				})) {
-					pRequest->send(500, F("text/plain"), F("NO_SD"));
+					pRequest->send(500, "text/plain", "NO_SD");
 				}
 
 				return;
 			}
 		}
 
-		pRequest->send(501, F("text/plain"), F("HTTP 501"));
+		pRequest->send(501, "text/plain", "HTTP 501");
 	});
 
 	g_pWebServer.onNotFound([](AsyncWebServerRequest *pRequest) {
 		if (pRequest->method() == HTTP_OPTIONS)
-			pRequest->send(200, F("text/plain"), F("HTTP 200"));
+			pRequest->send(200, "text/plain", "HTTP 200");
 		else
-			pRequest->send(404, F("text/plain"), F("HTTP 404"));
+			pRequest->send(404, "text/plain", "HTTP 404");
 	});
 
 	g_pWebServer.on("/ota", HTTP_POST, [](AsyncWebServerRequest* pRequest) {
@@ -1670,13 +1670,13 @@ void setup() {
 		if (bUpdate) {
 			LOGGER(INFO, "Restarting Controller to do a Firmware Update.");
 
-			pRequest->send(200, F("text/plain"), F("OTA_SCS"));
+			pRequest->send(200, "text/plain", "OTA_SCS");
 
 			bRestart = true;
 		} else {
 			LOGGER(ERROR, "Final OTA check failed.");
 
-			pRequest->send(500, F("text/plain"), F("OTA_ERR"));
+			pRequest->send(500, "text/plain", "OTA_ERR");
 		}
 	}, [](AsyncWebServerRequest* pRequest, String strFileName, size_t nIndex, uint8_t* nData, size_t nLength, bool bFinal) {
 		static bool bUpdateError = false;
