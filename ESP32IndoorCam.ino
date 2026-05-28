@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0526_1813WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0528_0123WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -1638,8 +1638,6 @@ void setup() {
 					AsyncWebServerResponse *pResponse = pRequest->beginResponse_P(200, F("image/jpeg"), pCameraFrameBuffer->buf, pCameraFrameBuffer->len);
 					pResponse->addHeader(F("Content-Disposition"), F("inline; filename=capture.jpg"));
 					pResponse->addHeader(F("Cache-Control"), F("no-cache, no-store, must-revalidate"));
-					pResponse->addHeader(F("Access-Control-Expose-Headers"), F("X-Return"));
-					pResponse->addHeader(F("X-Return"), "TSS");
 
 					pRequest->onDisconnect([pCameraFrameBuffer]() {
 						esp_camera_fb_return(pCameraFrameBuffer);
