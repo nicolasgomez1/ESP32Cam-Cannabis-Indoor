@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0528_0123WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0528_1417WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -792,10 +792,73 @@ void setup() {
 	g_pWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest* pRequest) {
 		const AsyncWebParameter* pParamAction = pRequest->getParam("action");
 		if (pParamAction) {
-			if (pParamAction->value() == "restart") {
-				LOGGER(INFO, "Restarting Controller by Web command.");
+			if (pParamAction->value() == "refresh") { // This is for refresh Panel values
+				char cBuffer[278];
+				time_t pTimeNow = time(nullptr);
 
-				bRestart = true;
+				snprintf(cBuffer, sizeof(cBuffer), "REFRESH%lu:%s:%u:%s:%s:%llu:%u:%d:%llu:%u:%u:%llu:%d:%u:%u:%d:%d:%d:%d:%lu:%d:%d:%d:%d:%d:%d:%d:%u:%u:%u:%u:%u:%u:%u:%d:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u",
+					(unsigned long)pTimeNow, FIRMWAREVERSION, g_nOTAProgress, g_cSSID, g_cSSIDPWD, TicksToMinutes(g_nWiFiRetryConnectInterval), (unsigned)g_bWiFiSleep, (int)g_pWiFiPower, TicksToSeconds(g_nSensorShutdownInterval),
+					(g_nEffectiveStartTimelapse == 0) ? 24 : g_nEffectiveStartTimelapse, (g_nEffectiveStopTimelapse == 0) ? 24 : g_nEffectiveStopTimelapse, TicksToMinutes(g_nTimelapseInterval), g_nTimelapseCounter,
+					g_nTimelapseLedBrightness, g_nMonitoringLedBrightness, g_pCameraConfig.xclk_freq_hz, (int)g_pCameraConfig.pixel_format, (int)g_pCameraConfig.frame_size,	g_pCameraConfig.jpeg_quality,
+					(unsigned long)g_pCameraConfig.fb_count, (int)g_pCameraConfig.fb_location, (int)g_pCameraConfig.grab_mode, (int)g_pSensorStatus.framesize, g_pSensorStatus.brightness, g_pSensorStatus.contrast, g_pSensorStatus.saturation,
+					g_pSensorStatus.sharpness, g_pSensorStatus.denoise, g_pSensorStatus.special_effect, g_pSensorStatus.wb_mode, g_pSensorStatus.awb, g_pSensorStatus.awb_gain, g_pSensorStatus.aec, g_pSensorStatus.aec2,
+					g_pSensorStatus.ae_level, g_pSensorStatus.aec_value, g_pSensorStatus.agc, g_pSensorStatus.agc_gain, g_pSensorStatus.gainceiling, g_pSensorStatus.bpc, g_pSensorStatus.wpc, g_pSensorStatus.raw_gma, g_pSensorStatus.lenc,
+					g_pSensorStatus.hmirror, g_pSensorStatus.vflip, g_pSensorStatus.dcw, g_pSensorStatus.colorbar
+				);
+				// ========================================================================================================================= //
+				/*
+					Response structure example: each data[X] is divided by ':'
+					data[0] → Current Timestamp
+					data[1] → Firmware Version
+					data[2] → OTA Update Progress
+					data[3] → SSID
+					data[4] → SSID PWD
+					data[5] → Try to reconnect interval
+					data[6] → WiFi Power Save Mode (Sleep)
+					data[7] → Wifi Transmit Power
+					data[8] → Interval to Turn Off Camera Sensor & Flash LED
+					data[9] → Timelapse Start Hour
+					data[10] → Timelapse Stop Hour
+					data[11] → Timelapse Interval
+					data[12] → Timelapse Captures Counter
+					data[13] → Timelapse Flash LED Brightness
+					data[14] → Monitoring Flash LED Brightness
+					data[15] → Camera Master Clock (XCLK)
+					data[16] → Camera Pixel Format
+					data[17] → Camera Initial & Timelapse Frame Size
+					data[18] → Camera Image Compression Level
+					data[19] → Camera Frame Buffers Count
+					data[20] → Camera Frame Buffer Location
+					data[21] → Camera Frame To Grab
+					data[22] → Sensor Monitoring Frame Size
+					data[23] → Sensor Brightness
+					data[24] → Sensor Contrast
+					data[25] → Sensor Saturation
+					data[26] → Sensor Sharpness
+					data[27] → Sensor Noise Reduction Level
+					data[28] → Sensor Special Effect
+					data[29] → Sensor Automatic White Balance Profile
+					data[30] → Sensor Automatic White Balance Enable
+					data[31] → Sensor Automatic White Balance Gain
+					data[32] → Sensor Automatic Exposure Enable
+					data[33] → Sensor Automatic Exposure (Night Mode) Enable
+					data[34] → Sensor Auto Exposure Compensation Level
+					data[35] → Sensor Manual Exposure Level
+					data[36] → Sensor Automatic Gain Enable
+					data[37] → Sensor Manual Gain Level
+					data[38] → Sensor Gain Ceiling Level
+					data[39] → Sensor Black Pixel Cancellation Enable
+					data[40] → Sensor White Pixel Cancellation Enable
+					data[41] → Sensor Raw Gamma Correction Level
+					data[42] → Sensor Vignette Correction Enable
+					data[43] → Sensor Horizontal Mirroring
+					data[44] → Sensor Vertical Flip
+					data[45] → Sensor Digital Downsample Enable
+					data[46] → Sensor Color Bars (Test Mode) Enable
+				*/
+
+				pRequest->send(200, F("text/plain"), cBuffer);
+				return;
 			} else if (pParamAction->value() == "update") {	// This is for update Settings
 				uint64_t nNewValue;
 				uint64_t nSuccessCodeMask = 0;
@@ -1359,73 +1422,10 @@ void setup() {
 
 					return;
 				}
-			} else if (pParamAction->value() == "refresh") { // This is for refresh Panel values
-				char cBuffer[278];
-				time_t pTimeNow = time(nullptr);
+			} else if (pParamAction->value() == "restart") {
+				LOGGER(INFO, "Restarting Controller by Web command.");
 
-				snprintf(cBuffer, sizeof(cBuffer), "REFRESH%lu:%s:%u:%s:%s:%llu:%u:%d:%llu:%u:%u:%llu:%d:%u:%u:%d:%d:%d:%d:%lu:%d:%d:%d:%d:%d:%d:%d:%u:%u:%u:%u:%u:%u:%u:%d:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u",
-					(unsigned long)pTimeNow, FIRMWAREVERSION, g_nOTAProgress, g_cSSID, g_cSSIDPWD, TicksToMinutes(g_nWiFiRetryConnectInterval), (unsigned)g_bWiFiSleep, (int)g_pWiFiPower, TicksToSeconds(g_nSensorShutdownInterval),
-					(g_nEffectiveStartTimelapse == 0) ? 24 : g_nEffectiveStartTimelapse, (g_nEffectiveStopTimelapse == 0) ? 24 : g_nEffectiveStopTimelapse, TicksToMinutes(g_nTimelapseInterval), g_nTimelapseCounter,
-					g_nTimelapseLedBrightness, g_nMonitoringLedBrightness, g_pCameraConfig.xclk_freq_hz, (int)g_pCameraConfig.pixel_format, (int)g_pCameraConfig.frame_size,	g_pCameraConfig.jpeg_quality,
-					(unsigned long)g_pCameraConfig.fb_count, (int)g_pCameraConfig.fb_location, (int)g_pCameraConfig.grab_mode, (int)g_pSensorStatus.framesize, g_pSensorStatus.brightness, g_pSensorStatus.contrast, g_pSensorStatus.saturation,
-					g_pSensorStatus.sharpness, g_pSensorStatus.denoise, g_pSensorStatus.special_effect, g_pSensorStatus.wb_mode, g_pSensorStatus.awb, g_pSensorStatus.awb_gain, g_pSensorStatus.aec, g_pSensorStatus.aec2,
-					g_pSensorStatus.ae_level, g_pSensorStatus.aec_value, g_pSensorStatus.agc, g_pSensorStatus.agc_gain, g_pSensorStatus.gainceiling, g_pSensorStatus.bpc, g_pSensorStatus.wpc, g_pSensorStatus.raw_gma, g_pSensorStatus.lenc,
-					g_pSensorStatus.hmirror, g_pSensorStatus.vflip, g_pSensorStatus.dcw, g_pSensorStatus.colorbar
-				);
-				// ========================================================================================================================= //
-				/*
-					Response structure example: each data[X] is divided by ':'
-					data[0] → Current Timestamp
-					data[1] → Firmware Version
-					data[2] → OTA Update Progress
-					data[3] → SSID
-					data[4] → SSID PWD
-					data[5] → Try to reconnect interval
-					data[6] → WiFi Power Save Mode (Sleep)
-					data[7] → Wifi Transmit Power
-					data[8] → Interval to Turn Off Camera Sensor & Flash LED
-					data[9] → Timelapse Start Hour
-					data[10] → Timelapse Stop Hour
-					data[11] → Timelapse Interval
-					data[12] → Timelapse Captures Counter
-					data[13] → Timelapse Flash LED Brightness
-					data[14] → Monitoring Flash LED Brightness
-					data[15] → Camera Master Clock (XCLK)
-					data[16] → Camera Pixel Format
-					data[17] → Camera Initial & Timelapse Frame Size
-					data[18] → Camera Image Compression Level
-					data[19] → Camera Frame Buffers Count
-					data[20] → Camera Frame Buffer Location
-					data[21] → Camera Frame To Grab
-					data[22] → Sensor Monitoring Frame Size
-					data[23] → Sensor Brightness
-					data[24] → Sensor Contrast
-					data[25] → Sensor Saturation
-					data[26] → Sensor Sharpness
-					data[27] → Sensor Noise Reduction Level
-					data[28] → Sensor Special Effect
-					data[29] → Sensor Automatic White Balance Profile
-					data[30] → Sensor Automatic White Balance Enable
-					data[31] → Sensor Automatic White Balance Gain
-					data[32] → Sensor Automatic Exposure Enable
-					data[33] → Sensor Automatic Exposure (Night Mode) Enable
-					data[34] → Sensor Auto Exposure Compensation Level
-					data[35] → Sensor Manual Exposure Level
-					data[36] → Sensor Automatic Gain Enable
-					data[37] → Sensor Manual Gain Level
-					data[38] → Sensor Gain Ceiling Level
-					data[39] → Sensor Black Pixel Cancellation Enable
-					data[40] → Sensor White Pixel Cancellation Enable
-					data[41] → Sensor Raw Gamma Correction Level
-					data[42] → Sensor Vignette Correction Enable
-					data[43] → Sensor Horizontal Mirroring
-					data[44] → Sensor Vertical Flip
-					data[45] → Sensor Digital Downsample Enable
-					data[46] → Sensor Color Bars (Test Mode) Enable
-				*/
-
-				pRequest->send(200, F("text/plain"), cBuffer);
-				return;
+				bRestart = true;
 			} else if (pParamAction->value() == "list") {	// This returns file list from any directory in the SD Card
 				if (!SafeSDAccess([&]() {
 					AsyncResponseStream *pResponseStream = pRequest->beginResponseStream(F("text/plain"));
