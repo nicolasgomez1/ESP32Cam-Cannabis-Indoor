@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0528_1753WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0530_0003r"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -319,7 +319,7 @@ static void LOGGER(ERR_TYPE nType, const char* szFormat, ...) {
 		case ERROR:	snprintf(cPrintType, sizeof(cPrintType), "[ERROR] ");	break;
 	}
 
-	int nOffset = snprintf(pMSG.cBuffer, sizeof(pMSG.cBuffer), "%02d/%02d/%04d %02d:%02d:%02d %s", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec, cPrintType);
+	size_t nOffset = snprintf(pMSG.cBuffer, sizeof(pMSG.cBuffer), "%02d/%02d/%04d %02d:%02d:%02d %s", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec, cPrintType);
 
 	va_list args;
 	va_start(args, szFormat);
@@ -473,6 +473,7 @@ static void SetSensorConfig(framesize_t FrameSize) {
 	sensor_t *pSensorConfig = esp_camera_sensor_get();
 
 	pSensorConfig->set_framesize(pSensorConfig, FrameSize);
+	pSensorConfig->set_quality(pSensorConfig, g_pSensorStatus.quality);	// Just in case...
 	pSensorConfig->set_brightness(pSensorConfig, g_pSensorStatus.brightness);
 	pSensorConfig->set_contrast(pSensorConfig, g_pSensorStatus.contrast);
 	pSensorConfig->set_saturation(pSensorConfig, g_pSensorStatus.saturation);
@@ -610,6 +611,7 @@ void setup() {
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// IMAGE COMPRESSION LEVEL
 			g_pCameraConfig.jpeg_quality = atoi(cBuffer);
+			g_pSensorStatus.quality = atoi(cBuffer);	// Just in case
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// FRAME BUFFERS COUNT
 			g_pCameraConfig.fb_count = atoi(cBuffer);
@@ -793,26 +795,121 @@ void setup() {
 		const AsyncWebParameter* pParamAction = pRequest->getParam("action");
 		if (pParamAction) {
 			if (pParamAction->value() == "refresh") { // This is for refresh Panel values
-				char cBuffer[278];
+				char cBuffer[227];
 				time_t pTimeNow = time(nullptr);
 
-				snprintf(cBuffer, sizeof(cBuffer), "REFRESH%lu:%s:%u:%s:%s:%llu:%u:%d:%llu:%u:%u:%llu:%d:%u:%u:%d:%d:%d:%d:%lu:%d:%d:%d:%d:%d:%d:%d:%u:%u:%u:%u:%u:%u:%u:%d:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u",
-					(unsigned long)pTimeNow, FIRMWAREVERSION, g_nOTAProgress, g_cSSID, g_cSSIDPWD, TicksToMinutes(g_nWiFiRetryConnectInterval), (unsigned)g_bWiFiSleep, (int)g_pWiFiPower, TicksToSeconds(g_nSensorShutdownInterval),
-					(g_nEffectiveStartTimelapse == 0) ? 24 : g_nEffectiveStartTimelapse, (g_nEffectiveStopTimelapse == 0) ? 24 : g_nEffectiveStopTimelapse, TicksToMinutes(g_nTimelapseInterval), g_nTimelapseCounter,
-					g_nTimelapseLedBrightness, g_nMonitoringLedBrightness, g_pCameraConfig.xclk_freq_hz, (int)g_pCameraConfig.pixel_format, (int)g_pCameraConfig.frame_size,	g_pCameraConfig.jpeg_quality,
-					(unsigned long)g_pCameraConfig.fb_count, (int)g_pCameraConfig.fb_location, (int)g_pCameraConfig.grab_mode, (int)g_pSensorStatus.framesize, g_pSensorStatus.brightness, g_pSensorStatus.contrast, g_pSensorStatus.saturation,
-					g_pSensorStatus.sharpness, g_pSensorStatus.denoise, g_pSensorStatus.special_effect, g_pSensorStatus.wb_mode, g_pSensorStatus.awb, g_pSensorStatus.awb_gain, g_pSensorStatus.aec, g_pSensorStatus.aec2,
-					g_pSensorStatus.ae_level, g_pSensorStatus.aec_value, g_pSensorStatus.agc, g_pSensorStatus.agc_gain, g_pSensorStatus.gainceiling, g_pSensorStatus.bpc, g_pSensorStatus.wpc, g_pSensorStatus.raw_gma, g_pSensorStatus.lenc,
-					g_pSensorStatus.hmirror, g_pSensorStatus.vflip, g_pSensorStatus.dcw, g_pSensorStatus.colorbar
-				);
+				//ABCDEFG
+				size_t nOffset = snprintf(cBuffer, sizeof(cBuffer), "REFRESH");
+
+				//0000000000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, "%lu", (unsigned long)pTimeNow);
+
+				//:ABCDEFGHIJKLMNÑ
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%s", FIRMWAREVERSION);
+
+				//:000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nOTAProgress);
+
+				//:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%s:%s", g_cSSID, g_cSSIDPWD);
+				//:0000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)TicksToMinutes(g_nWiFiRetryConnectInterval));
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_bWiFiSleep);
+				//:00
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pWiFiPower);
+
+				//:0000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)TicksToSeconds(g_nSensorShutdownInterval));
+
+				//:00:00
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u:%u", (g_nEffectiveStartTimelapse == 0) ? 24 : g_nEffectiveStartTimelapse, (g_nEffectiveStopTimelapse == 0) ? 24 : g_nEffectiveStopTimelapse);
+				//:0000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)TicksToMinutes(g_nTimelapseInterval));
+				//:00000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nTimelapseCounter);
+				//:000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nTimelapseLedBrightness);
+
+				//:000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nMonitoringLedBrightness);
+
+				//:00000000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pCameraConfig.xclk_freq_hz);
+				//:00
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.pixel_format);
+				//:00
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.frame_size);
+				//:00
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pCameraConfig.jpeg_quality);
+				//:00
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.fb_count);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.fb_location);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.grab_mode);
+
+				//:00
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pSensorStatus.framesize);
+				//:-0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pSensorStatus.brightness);
+				//:-0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pSensorStatus.contrast);
+				//:-0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pSensorStatus.saturation);
+				//:-0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pSensorStatus.sharpness);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.denoise);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.special_effect);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.wb_mode);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.awb);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.awb_gain);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.aec);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.aec2);
+				//:-0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pSensorStatus.ae_level);
+				//:0000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.aec_value);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.agc);
+				//:00
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.agc_gain);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.gainceiling);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.bpc);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.wpc);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.raw_gma);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.lenc);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.hmirror);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.vflip);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.dcw);
+				//:0 + null terminator
+				snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.colorbar);
+
+				///////////////////////////////////////////////////////////////////////////////
+				///////////////////////////////////////////////////////////////////////////////
 				// ========================================================================================================================= //
 				/*
 					Response structure example: each data[X] is divided by ':'
 					data[0] → Current Timestamp
 					data[1] → Firmware Version
 					data[2] → OTA Update Progress
-					data[3] → SSID
-					data[4] → SSID PWD
+					data[3] → WiFi Network Name
+					data[4] → WiFi Network Password
 					data[5] → Try to reconnect interval
 					data[6] → WiFi Power Save Mode (Sleep)
 					data[7] → Wifi Transmit Power
