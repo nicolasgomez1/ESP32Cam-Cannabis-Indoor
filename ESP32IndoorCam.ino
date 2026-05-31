@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0530_0003r"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0530_2102r"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -1560,39 +1560,37 @@ void setup() {
 				return;
 			} else if (pParamAction->value() == "cleanfolder") {
 				if (!SafeSDAccess([&]() {
-					if (const AsyncWebParameter* pParam = pRequest->getParam("folder")) {
-						uint32_t nDeleteFilesCount = 0;
-						char cPath[64];
-						char cFilePath[64];
+					uint32_t nDeleteFilesCount = 0;
+					char cPath[64];
+					char cFilePath[64];
 
-						snprintf(cPath, sizeof(cPath), "/%s", pRequest->getParam("folder")->value().c_str());
+					snprintf(cPath, sizeof(cPath), "/%s", pRequest->getParam("folder")->value().c_str());
 
-						File pWorkingDirectory = SD_MMC.open(cPath);
-						File pFile = pWorkingDirectory.openNextFile();
+					File pWorkingDirectory = SD_MMC.open(cPath);
+					File pFile = pWorkingDirectory.openNextFile();
 
-						while (pFile) {
-							if (!pFile.isDirectory()) {
-								snprintf(cFilePath, sizeof(cFilePath), "%s", pFile.path());
+					while (pFile) {
+						if (!pFile.isDirectory()) {
+							snprintf(cFilePath, sizeof(cFilePath), "%s", pFile.path());
 
-								pFile.close();
+							pFile.close();
 
-								SD_MMC.remove(cFilePath);
+							SD_MMC.remove(cFilePath);
 
-								nDeleteFilesCount++;
-							} else {
-								pFile.close();
-							}
-
-							pFile = pWorkingDirectory.openNextFile();
+							nDeleteFilesCount++;
+						} else {
+							pFile.close();
 						}
 
-						pWorkingDirectory.close();
-
-						char cDeletedFileCount[12];
-						snprintf(cDeletedFileCount, sizeof(cDeletedFileCount), "%u", nDeleteFilesCount);
-
-						pRequest->send(200, "text/plain", cDeletedFileCount);
+						pFile = pWorkingDirectory.openNextFile();
 					}
+
+					pWorkingDirectory.close();
+
+					char cDeletedFileCount[12];
+					snprintf(cDeletedFileCount, sizeof(cDeletedFileCount), "%u", nDeleteFilesCount);
+
+					pRequest->send(200, "text/plain", cDeletedFileCount);
 				})) {
 					pRequest->send(500, "text/plain", "NO_SD");
 				}
