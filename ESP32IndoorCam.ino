@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0601_0742WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0601_0753WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -1864,9 +1864,11 @@ void loop() {
 			static uint64_t nTimelapseInterval = 0;
 
 			if ((nCurrentMillis - nTimelapseInterval) >= g_nTimelapseInterval) {
-				if ((g_nEffectiveStartTimelapse != g_nEffectiveStopTimelapse) &&
-					(g_nEffectiveStartTimelapse < g_nEffectiveStopTimelapse && currentTime.tm_hour >= g_nEffectiveStartTimelapse && currentTime.tm_hour < g_nEffectiveStopTimelapse) || // Normal case: timelapse start time is before stop time (e.g., from 7 AM to 7 PM)
-					(g_nEffectiveStartTimelapse >= g_nEffectiveStopTimelapse && (currentTime.tm_hour >= g_nEffectiveStartTimelapse || currentTime.tm_hour < g_nEffectiveStopTimelapse))) {	// Special case: timelapse schedule crosses midnight (e.g., from 8 PM to 6 AM)
+				if ((g_nEffectiveStartTimelapse != g_nEffectiveStopTimelapse) &&	// Check if either the timelapse start time and stop time is not the same
+						((g_nEffectiveStartTimelapse < g_nEffectiveStopTimelapse && currentTime.tm_hour >= g_nEffectiveStartTimelapse && currentTime.tm_hour < g_nEffectiveStopTimelapse) // Normal case: timelapse start time is before stop time (e.g., from 7 AM to 7 PM)
+																																											||
+						(g_nEffectiveStartTimelapse >= g_nEffectiveStopTimelapse && (currentTime.tm_hour >= g_nEffectiveStartTimelapse || currentTime.tm_hour < g_nEffectiveStopTimelapse)) // Special case: timelapse schedule crosses midnight (e.g., from 8 PM to 6 AM)
+				)) {
 					nTimelapseInterval = nCurrentMillis;
 
 					if (g_nOTAProgress > 0) {
