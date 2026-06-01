@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0601_0753WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0601_0951WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -498,8 +498,11 @@ static void SetSensorConfig(framesize_t FrameSize) {
 	pSensorConfig->set_dcw(pSensorConfig, g_pSensorStatus.dcw);
 	pSensorConfig->set_colorbar(pSensorConfig, g_pSensorStatus.colorbar);
 }
-
-void ComposeSettings(char* cBuffer, size_t nSize, size_t nOffset) {	// NOTE: Lenght 190
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Serializes the current ESP32-CAM configuration into a pre-allocated char buffer using a colon-delimited format.
+// The buffer must be allocated by the caller with sufficient size: 190 bytes.
+// nOffset must point to the position in cBuffer where writing should begin, allowing the caller to prepend a response prefix (e.g. "UPDATE<mask>:" or "REFRESH:") before invoking this function.
+void ComposeSettings(char* cBuffer, size_t nSize, size_t nOffset) {
 	//:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD
 	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%s:%s", g_cSSID, g_cSSIDPWD);
 	//:0000
@@ -1441,6 +1444,8 @@ void setup() {
 				}
 				//////////////////////////////////////////////////
 				char cBuffer[217];
+
+				//ABCDEF00000000000000000000:
 				size_t nOffset = snprintf(cBuffer, sizeof(cBuffer), "UPDATE%llu:", nSuccessCodeMask);
 
 				ComposeSettings(cBuffer, sizeof(cBuffer), nOffset);
