@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0530_2102r"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0601_0742WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -64,7 +64,6 @@ enum SETTINGS_CODES {
 	IDX_TIME,
 	IDX_WIFI_SSID,
 	IDX_WIFI_PWD,
-	IDX_WIFI_STA,
 	IDX_WIFI_RETRY,
 	IDX_WIFI_SLEEP,
 	IDX_WIFI_POWER,
@@ -500,6 +499,98 @@ static void SetSensorConfig(framesize_t FrameSize) {
 	pSensorConfig->set_colorbar(pSensorConfig, g_pSensorStatus.colorbar);
 }
 
+void ComposeSettings(char* cBuffer, size_t nSize, size_t nOffset) {	// NOTE: Lenght 190
+	//:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%s:%s", g_cSSID, g_cSSIDPWD);
+	//:0000
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)TicksToMinutes(g_nWiFiRetryConnectInterval));
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)g_bWiFiSleep);
+	//:00
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)g_pWiFiPower);
+
+	//:0000
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)TicksToSeconds(g_nSensorShutdownInterval));
+
+	//:00:00
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u:%u", (g_nEffectiveStartTimelapse == 0) ? 24 : g_nEffectiveStartTimelapse, (g_nEffectiveStopTimelapse == 0) ? 24 : g_nEffectiveStopTimelapse);
+	//:0000
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)TicksToMinutes(g_nTimelapseInterval));
+	//:00000
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_nTimelapseCounter);
+	//:000
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_nTimelapseLedBrightness);
+
+	//:000
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_nMonitoringLedBrightness);
+
+	//:00000000
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%d", g_pCameraConfig.xclk_freq_hz);
+	//:00
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)g_pCameraConfig.pixel_format);
+	//:00
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)g_pCameraConfig.frame_size);
+	//:00
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%d", g_pCameraConfig.jpeg_quality);
+	//:00
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)g_pCameraConfig.fb_count);
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)g_pCameraConfig.fb_location);
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)g_pCameraConfig.grab_mode);
+
+	//:00
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)g_pSensorStatus.framesize);
+	//:-0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%d", g_pSensorStatus.brightness);
+	//:-0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%d", g_pSensorStatus.contrast);
+	//:-0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%d", g_pSensorStatus.saturation);
+	//:-0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%d", g_pSensorStatus.sharpness);
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.denoise);
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.special_effect);
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.wb_mode);
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.awb);
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.awb_gain);
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.aec);
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.aec2);
+	//:-0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%d", g_pSensorStatus.ae_level);
+	//:0000
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.aec_value);
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.agc);
+	//:00
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.agc_gain);
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.gainceiling);
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.bpc);
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.wpc);
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.raw_gma);
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.lenc);
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.hmirror);
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.vflip);
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.dcw);
+	//:0 + null terminator
+	snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.colorbar);
+}
+
 void setup() {
 	esp_reset_reason_t pReason = esp_reset_reason();
 	g_pSDMutex = xSemaphoreCreateMutex();
@@ -795,7 +886,7 @@ void setup() {
 		const AsyncWebParameter* pParamAction = pRequest->getParam("action");
 		if (pParamAction) {
 			if (pParamAction->value() == "refresh") { // This is for refresh Panel values
-				char cBuffer[227];
+				char cBuffer[38];
 				time_t pTimeNow = time(nullptr);
 
 				//ABCDEFG
@@ -807,153 +898,15 @@ void setup() {
 				//:ABCDEFGHIJKLMNÑ
 				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%s", FIRMWAREVERSION);
 
-				//:000
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nOTAProgress);
-
-				//:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%s:%s", g_cSSID, g_cSSIDPWD);
-				//:0000
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)TicksToMinutes(g_nWiFiRetryConnectInterval));
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_bWiFiSleep);
-				//:00
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pWiFiPower);
-
-				//:0000
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)TicksToSeconds(g_nSensorShutdownInterval));
-
-				//:00:00
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u:%u", (g_nEffectiveStartTimelapse == 0) ? 24 : g_nEffectiveStartTimelapse, (g_nEffectiveStopTimelapse == 0) ? 24 : g_nEffectiveStopTimelapse);
-				//:0000
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)TicksToMinutes(g_nTimelapseInterval));
-				//:00000
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nTimelapseCounter);
-				//:000
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nTimelapseLedBrightness);
-
-				//:000
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nMonitoringLedBrightness);
-
-				//:00000000
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pCameraConfig.xclk_freq_hz);
-				//:00
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.pixel_format);
-				//:00
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.frame_size);
-				//:00
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pCameraConfig.jpeg_quality);
-				//:00
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.fb_count);
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.fb_location);
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.grab_mode);
-
-				//:00
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pSensorStatus.framesize);
-				//:-0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pSensorStatus.brightness);
-				//:-0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pSensorStatus.contrast);
-				//:-0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pSensorStatus.saturation);
-				//:-0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pSensorStatus.sharpness);
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.denoise);
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.special_effect);
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.wb_mode);
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.awb);
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.awb_gain);
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.aec);
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.aec2);
-				//:-0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pSensorStatus.ae_level);
-				//:0000
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.aec_value);
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.agc);
-				//:00
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.agc_gain);
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.gainceiling);
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.bpc);
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.wpc);
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.raw_gma);
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.lenc);
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.hmirror);
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.vflip);
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.dcw);
-				//:0 + null terminator
-				snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.colorbar);
-
-				///////////////////////////////////////////////////////////////////////////////
-				///////////////////////////////////////////////////////////////////////////////
+				//:000 + null terminator
+				snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nOTAProgress);
 				// ========================================================================================================================= //
 				/*
 					Response structure example: each data[X] is divided by ':'
 					data[0] → Current Timestamp
 					data[1] → Firmware Version
 					data[2] → OTA Update Progress
-					data[3] → WiFi Network Name
-					data[4] → WiFi Network Password
-					data[5] → Try to reconnect interval
-					data[6] → WiFi Power Save Mode (Sleep)
-					data[7] → Wifi Transmit Power
-					data[8] → Interval to Turn Off Camera Sensor & Flash LED
-					data[9] → Timelapse Start Hour
-					data[10] → Timelapse Stop Hour
-					data[11] → Timelapse Interval
-					data[12] → Timelapse Captures Counter
-					data[13] → Timelapse Flash LED Brightness
-					data[14] → Monitoring Flash LED Brightness
-					data[15] → Camera Master Clock (XCLK)
-					data[16] → Camera Pixel Format
-					data[17] → Camera Initial & Timelapse Frame Size
-					data[18] → Camera Image Compression Level
-					data[19] → Camera Frame Buffers Count
-					data[20] → Camera Frame Buffer Location
-					data[21] → Camera Frame To Grab
-					data[22] → Sensor Monitoring Frame Size
-					data[23] → Sensor Brightness
-					data[24] → Sensor Contrast
-					data[25] → Sensor Saturation
-					data[26] → Sensor Sharpness
-					data[27] → Sensor Noise Reduction Level
-					data[28] → Sensor Special Effect
-					data[29] → Sensor Automatic White Balance Profile
-					data[30] → Sensor Automatic White Balance Enable
-					data[31] → Sensor Automatic White Balance Gain
-					data[32] → Sensor Automatic Exposure Enable
-					data[33] → Sensor Automatic Exposure (Night Mode) Enable
-					data[34] → Sensor Auto Exposure Compensation Level
-					data[35] → Sensor Manual Exposure Level
-					data[36] → Sensor Automatic Gain Enable
-					data[37] → Sensor Manual Gain Level
-					data[38] → Sensor Gain Ceiling Level
-					data[39] → Sensor Black Pixel Cancellation Enable
-					data[40] → Sensor White Pixel Cancellation Enable
-					data[41] → Sensor Raw Gamma Correction Level
-					data[42] → Sensor Vignette Correction Enable
-					data[43] → Sensor Horizontal Mirroring
-					data[44] → Sensor Vertical Flip
-					data[45] → Sensor Digital Downsample Enable
-					data[46] → Sensor Color Bars (Test Mode) Enable
 				*/
-
 				pRequest->send(200, "text/plain", cBuffer);
 				return;
 			} else if (pParamAction->value() == "update") {	// This is for update Settings
@@ -987,9 +940,6 @@ void setup() {
 
 					SET_BIT_TO_MASK(nSuccessCodeMask, IDX_WIFI_PWD);
 				}
-
-				if (bWiFiChanges)
-					SET_BIT_TO_MASK(nSuccessCodeMask, IDX_WIFI_STA);
 
 				if (const AsyncWebParameter* pParam = pRequest->getParam("wfrci")) {
 					nNewValue = MinutesToTicks(pParam->value().toInt());
@@ -1490,35 +1440,84 @@ void setup() {
 					ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
 				}
 				//////////////////////////////////////////////////
-				if (nSuccessCodeMask != 0) {	// If have some change, send response to web client and finally save new settings values
-					char cBuffer[24];
-					snprintf(cBuffer, sizeof(cBuffer), "MSG%llu", nSuccessCodeMask);
+				char cBuffer[217];
+				size_t nOffset = snprintf(cBuffer, sizeof(cBuffer), "UPDATE%llu:", nSuccessCodeMask);
 
-					pRequest->send(200, "text/plain", cBuffer);
+				ComposeSettings(cBuffer, sizeof(cBuffer), nOffset);
+				// ========================================================================================================================= //
+				/*
+					Response structure example: each data[X] is divided by ':'
+					data[0] → Flag of Successfully changes
+					data[1] → WiFi Network Name
+					data[2] → WiFi Network Password
+					data[3] → Try to reconnect interval
+					data[4] → WiFi Power Save Mode (Sleep)
+					data[5] → Wifi Transmit Power
+					data[6] → Interval to Turn Off Camera Sensor & Flash LED
+					data[7] → Timelapse Start Hour
+					data[8] → Timelapse Stop Hour
+					data[9] → Timelapse Interval
+					data[10] → Timelapse Captures Counter
+					data[11] → Timelapse Flash LED Brightness
+					data[12] → Monitoring Flash LED Brightness
+					data[13] → Camera Master Clock (XCLK)
+					data[14] → Camera Pixel Format
+					data[15] → Camera Initial & Timelapse Frame Size
+					data[16] → Camera Image Compression Level
+					data[17] → Camera Frame Buffers Count
+					data[18] → Camera Frame Buffer Location
+					data[19] → Camera Frame To Grab
+					data[20] → Sensor Monitoring Frame Size
+					data[21] → Sensor Brightness
+					data[22] → Sensor Contrast
+					data[23] → Sensor Saturation
+					data[24] → Sensor Sharpness
+					data[25] → Sensor Noise Reduction Level
+					data[26] → Sensor Special Effect
+					data[27] → Sensor Automatic White Balance Profile
+					data[28] → Sensor Automatic White Balance Enable
+					data[29] → Sensor Automatic White Balance Gain
+					data[30] → Sensor Automatic Exposure Enable
+					data[31] → Sensor Automatic Exposure (Night Mode) Enable
+					data[32] → Sensor Auto Exposure Compensation Level
+					data[33] → Sensor Manual Exposure Level
+					data[34] → Sensor Automatic Gain Enable
+					data[35] → Sensor Manual Gain Level
+					data[36] → Sensor Gain Ceiling Level
+					data[37] → Sensor Black Pixel Cancellation Enable
+					data[38] → Sensor White Pixel Cancellation Enable
+					data[39] → Sensor Raw Gamma Correction Level
+					data[40] → Sensor Vignette Correction Enable
+					data[41] → Sensor Horizontal Mirroring
+					data[42] → Sensor Vertical Flip
+					data[43] → Sensor Digital Downsample Enable
+					data[44] → Sensor Color Bars (Test Mode) Enable
+				*/
+				pRequest->send(200, "text/plain", cBuffer);
 
-					if (bWiFiChanges) { // Update WiFi values after response the request. in otherwise the message is not sended.
-						strncpy(g_cSSID, pParamSSID->value().c_str(), sizeof(g_cSSID) - 1);
-						g_cSSID[sizeof(g_cSSID) - 1] = '\0';
+				if (bWiFiChanges) { // Update WiFi values after response the request. in otherwise the message is not sended.
+					strncpy(g_cSSID, pParamSSID->value().c_str(), sizeof(g_cSSID) - 1);
+					g_cSSID[sizeof(g_cSSID) - 1] = '\0';
 
-						strncpy(g_cSSIDPWD, pParamSSIDPWD->value().c_str(), sizeof(g_cSSIDPWD) - 1);
-						g_cSSIDPWD[sizeof(g_cSSIDPWD) - 1] = '\0';
-					}
+					strncpy(g_cSSIDPWD, pParamSSIDPWD->value().c_str(), sizeof(g_cSSIDPWD) - 1);
+					g_cSSIDPWD[sizeof(g_cSSIDPWD) - 1] = '\0';
+				}
 
+				if (nSuccessCodeMask != 0)	// If have some change, save new settings values
 					SaveSettings();
 
-					if (bWiFiChanges) { // After send response to web client, Try reconnect to WiFi if is required
-						LOGGER(INFO, "Disconnecting WiFi to start connection to new SSID...");
+				if (bWiFiChanges) { // After send response to web client, Try reconnect to WiFi if is required
+					LOGGER(INFO, "Disconnecting WiFi to start connection to new SSID...");
 
-						WiFi.disconnect(false); // First disconnect from current Network (Arg false to just disconnect the Station, not the AP)
+					WiFi.disconnect(false); // First disconnect from current Network (Arg false to just disconnect the Station, not the AP)
 
-						if (eTaskGetState(g_pWiFiReconnect) != eSuspended)
-							vTaskSuspend(g_pWiFiReconnect);
+					if (eTaskGetState(g_pWiFiReconnect) != eSuspended)
+						vTaskSuspend(g_pWiFiReconnect);
 
-						bForceTryConnectWiFi = true;
-					}
-
-					return;
+					bForceTryConnectWiFi = true;
 				}
+
+				return;
 			} else if (pParamAction->value() == "restart") {
 				LOGGER(INFO, "Restarting Controller by Web command.");
 
