@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0601_0951WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0603_0103WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -59,7 +59,6 @@
 
 #define LED_GPIO_NUM		4
 
-// Global Variables
 enum SETTINGS_CODES {
 	IDX_TIME,
 	IDX_WIFI_SSID,
@@ -108,7 +107,6 @@ enum SETTINGS_CODES {
 	IDX_COLORBAR_ENABLE
 };
 
-// DO NOT TOUCH IT!
 enum ERR_TYPE { INFO, WARN, ERROR };
 
 struct LogMessage {
@@ -116,6 +114,7 @@ struct LogMessage {
 	char cFileName[29];
 };
 
+// Global Variables
 // Settings Variables
 char g_cSSID[32];
 char g_cSSIDPWD[32];
@@ -670,14 +669,10 @@ void setup() {
 			g_nSensorShutdownInterval = atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// TIMELAPSE START HOUR
-			uint8_t nValue = atoi(cBuffer);
-
-			g_nEffectiveStartTimelapse = (nValue == 24) ? 0 : nValue;	// Stores the effective timelapse start hour, converting hour 24 to 0 (midnight)
+			g_nEffectiveStartTimelapse = atoi(cBuffer) % 24;	// Stores the effective light start hour, converting hour 24 to 0 (midnight)
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// TIMELAPSE STOP HOUR
-			nValue = atoi(cBuffer);
-
-			g_nEffectiveStopTimelapse = (nValue == 24) ? 0 : nValue;	// Stores the effective timelapse stop hour, converting hour 24 to 0 (midnight)
+			g_nEffectiveStopTimelapse = atoi(cBuffer) % 24;	// Stores the effective light start hour, converting hour 24 to 0 (midnight)
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// TIMELAPSE CAPTURE INTERVAL
 			g_nTimelapseInterval = atoi(cBuffer);
@@ -888,7 +883,7 @@ void setup() {
 	g_pWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest* pRequest) {
 		const AsyncWebParameter* pParamAction = pRequest->getParam("action");
 		if (pParamAction) {
-			if (pParamAction->value() == "refresh") { // This is for refresh Panel values
+			if (pParamAction->value() == "refresh") {	// This is for refresh Panel values
 				char cBuffer[38];
 				time_t pTimeNow = time(nullptr);
 
@@ -919,13 +914,12 @@ void setup() {
 				sensor_t *pSensorConfig = esp_camera_sensor_get();
 
 				// =============== Current DateTime =============== //
-				const AsyncWebParameter* pParamTime = pRequest->getParam("time");
-				if (pParamTime) {
-					SetCurrentDatetime(pParamTime->value().toInt());
+				if (const AsyncWebParameter* pParam = pRequest->getParam("time")) {
+					SetCurrentDatetime(pParam->value().toInt());
 
 					struct tm currentTime;
 					GetLocalTimeNow(&currentTime);
-					LOGGER(INFO, "New Datetime: %d/%d/%04d %02d:%02d:%02d.", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
+					LOGGER(INFO, "New Datetime: %02d/%02d/%04d %02d:%02d:%02d.", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
 
 					SET_BIT_TO_MASK(nSuccessCodeMask, IDX_TIME);
 				}
@@ -985,20 +979,20 @@ void setup() {
 				}
 				// =============== TIMELAPSE START HOUR =============== //
 				if (const AsyncWebParameter* pParam = pRequest->getParam("timelapsestart")) {
-					nNewValue = pParam->value().toInt();
+					nNewValue = pParam->value().toInt() % 24;
 
 					if (nNewValue != g_nEffectiveStartTimelapse) {
-						g_nEffectiveStartTimelapse = (nNewValue == 24) ? 0 : nNewValue;
+						g_nEffectiveStartTimelapse = nNewValue;
 
 						SET_BIT_TO_MASK(nSuccessCodeMask, IDX_TL_START);
 					}
 				}
 				// =============== TIMELAPSE STOP HOUR =============== //
 				if (const AsyncWebParameter* pParam = pRequest->getParam("timelapsestop")) {
-					nNewValue = pParam->value().toInt();
+					nNewValue = pParam->value().toInt() % 24;
 
 					if (nNewValue != g_nEffectiveStopTimelapse) {
-						g_nEffectiveStopTimelapse = (nNewValue == 24) ? 0 : nNewValue;
+						g_nEffectiveStopTimelapse = nNewValue;
 
 						SET_BIT_TO_MASK(nSuccessCodeMask, IDX_TL_STOP);
 					}
@@ -1434,7 +1428,7 @@ void setup() {
 					if (g_nCurrentLedBrightness == 0) {
 						if ( pParam->value() == "0")	// Monitoring
 							nNewValue = g_nMonitoringLedBrightness;
-						else															// Timelapse
+						else													// Timelapse
 							nNewValue = g_nTimelapseLedBrightness;
 					}
 
@@ -1500,7 +1494,7 @@ void setup() {
 				*/
 				pRequest->send(200, "text/plain", cBuffer);
 
-				if (bWiFiChanges) { // Update WiFi values after response the request. in otherwise the message is not sended.
+				if (bWiFiChanges) {	// Update WiFi values after response the request. in otherwise the message is not sended.
 					strncpy(g_cSSID, pParamSSID->value().c_str(), sizeof(g_cSSID) - 1);
 					g_cSSID[sizeof(g_cSSID) - 1] = '\0';
 
@@ -1511,7 +1505,7 @@ void setup() {
 				if (nSuccessCodeMask != 0)	// If have some change, save new settings values
 					SaveSettings();
 
-				if (bWiFiChanges) { // After send response to web client, Try reconnect to WiFi if is required
+				if (bWiFiChanges) {	// After send response to web client, Try reconnect to WiFi if is required
 					LOGGER(INFO, "Disconnecting WiFi to start connection to new SSID...");
 
 					WiFi.disconnect(false); // First disconnect from current Network (Arg false to just disconnect the Station, not the AP)
