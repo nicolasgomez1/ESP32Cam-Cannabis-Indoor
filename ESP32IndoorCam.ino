@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0603_0103WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0604_1924WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -134,12 +134,124 @@ camera_status_t g_pSensorStatus;
 // Internal Variables
 bool bRestart = false;
 bool bForceTryConnectWiFi = true;
-uint64_t g_nLastCameraActivity = 0;
+volatile uint32_t g_nLastCameraActivity = 0;
 uint8_t g_nCurrentLedBrightness = 0;
 framesize_t g_CurrentFrameSize;
 bool g_bTakingSnapshot = false;
 bool g_bTakingTimelapse = false;
 uint8_t g_nOTAProgress = 0;
+
+typedef struct {
+	camera_fb_t *fb;
+	size_t index;
+} camera_frame_t;
+
+class AsyncJpegStreamResponse : public AsyncAbstractResponse {
+private:
+	camera_frame_t	_frame;
+	size_t					_index;
+	size_t					_jpg_buf_len;
+	uint8_t*				_jpg_buf;
+
+public:
+	AsyncJpegStreamResponse() {
+		_callback						= nullptr;
+		_code								= 200;
+		_contentLength			= 0;
+		_contentType				= "multipart/x-mixed-replace;boundary=frame";
+		_sendContentLength	= false;
+		_chunked						= true;
+		_index							= 0;
+		_jpg_buf_len				= 0;
+		_jpg_buf						= nullptr;
+
+		memset(&_frame, 0, sizeof(camera_frame_t));
+	}
+	
+	~AsyncJpegStreamResponse() {
+		if (_frame.fb) {
+			if (_frame.fb->format != PIXFORMAT_JPEG)
+				free(_jpg_buf);
+			
+			esp_camera_fb_return(_frame.fb);
+		}
+	}
+
+	bool _sourceValid() const override { return true; }
+
+	size_t _fillBuffer(uint8_t *buf, size_t maxLen) override {
+			size_t ret = _content(buf, maxLen, _index);
+			if (ret != RESPONSE_TRY_AGAIN)
+				_index += ret;
+
+			return ret;
+	}
+
+private:
+	size_t _content(uint8_t *buffer, size_t maxLen, size_t index) {
+		if (!_frame.fb || _frame.index == _jpg_buf_len) {
+			if (_frame.fb) {
+					if (_frame.fb->format != PIXFORMAT_JPEG)
+						free(_jpg_buf);
+
+					esp_camera_fb_return(_frame.fb);
+
+					_frame.fb = nullptr;
+					_jpg_buf = nullptr;
+					_jpg_buf_len = 0;
+			}
+
+			if (maxLen < 64)
+				return RESPONSE_TRY_AGAIN;
+
+			_frame.index = 0;
+			_frame.fb = esp_camera_fb_get();
+
+			if (!_frame.fb)
+				return RESPONSE_TRY_AGAIN;
+
+			g_nLastCameraActivity = millis();
+
+			if (_frame.fb->format != PIXFORMAT_JPEG) {
+				if (!frame2jpg(_frame.fb, 80, &_jpg_buf, &_jpg_buf_len)) {
+					esp_camera_fb_return(_frame.fb);
+					_frame.fb = nullptr;
+
+					return RESPONSE_TRY_AGAIN;
+				}
+			} else {
+				_jpg_buf = _frame.fb->buf;
+				_jpg_buf_len = _frame.fb->len;
+			}
+
+			const char *boundary = index ? "\r\n--frame\r\n" : "--frame\r\n";
+			size_t blen = strlen(boundary);
+			memcpy(buffer, boundary, blen);
+			buffer += blen;
+
+			size_t hlen = sprintf((char *)buffer,"Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n", _jpg_buf_len);
+			buffer += hlen;
+
+			size_t dataLen = maxLen - blen - hlen;
+			if (dataLen > _jpg_buf_len)
+				dataLen = _jpg_buf_len;
+
+			memcpy(buffer, _jpg_buf, dataLen);
+			_frame.index = dataLen;
+
+			return blen + hlen + dataLen;
+		}
+
+		size_t available = _jpg_buf_len - _frame.index;
+		if (maxLen > available)
+			maxLen = available;
+
+		memcpy(buffer, _jpg_buf + _frame.index, maxLen);
+		_frame.index += maxLen;
+
+		return maxLen;
+	}
+};
 
 // Global Handles, Interface & Instances
 AsyncWebServer g_pWebServer(SECRET_WEBSERVER_PORT);	// Asynchronous web server instance listening on SECRET_WEBSERVER_PORT
@@ -502,8 +614,8 @@ static void SetSensorConfig(framesize_t FrameSize) {
 // The buffer must be allocated by the caller with sufficient size: 190 bytes.
 // nOffset must point to the position in cBuffer where writing should begin, allowing the caller to prepend a response prefix (e.g. "UPDATE<mask>:" or "REFRESH:") before invoking this function.
 void ComposeSettings(char* cBuffer, size_t nSize, size_t nOffset) {
-	//:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%s:%s", g_cSSID, g_cSSIDPWD);
+	//ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, "%s:%s", g_cSSID, g_cSSIDPWD);
 	//:0000
 	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)TicksToMinutes(g_nWiFiRetryConnectInterval));
 	//:0
@@ -884,7 +996,7 @@ void setup() {
 		const AsyncWebParameter* pParamAction = pRequest->getParam("action");
 		if (pParamAction) {
 			if (pParamAction->value() == "refresh") {	// This is for refresh Panel values
-				char cBuffer[38];
+				char cBuffer[40];
 				time_t pTimeNow = time(nullptr);
 
 				//ABCDEFG
@@ -896,14 +1008,18 @@ void setup() {
 				//:ABCDEFGHIJKLMNÑ
 				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%s", FIRMWAREVERSION);
 
-				//:000 + null terminator
-				snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nOTAProgress);
+				//:000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nOTAProgress);
+
+				//:0 + null terminator
+				snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (g_nCurrentLedBrightness > 0) ? 1 : 0);
 				// ========================================================================================================================= //
 				/*
 					Response structure example: each data[X] is divided by ':'
 					data[0] → Current Timestamp
 					data[1] → Firmware Version
 					data[2] → OTA Update Progress
+					data[3] → Flash On/Off Status
 				*/
 				pRequest->send(200, "text/plain", cBuffer);
 				return;
@@ -1614,7 +1730,7 @@ void setup() {
 				}
 
 				return;
-			} else if (pParamAction->value() == "capture") {
+			} else if (pParamAction->value() == "stream") {
 				if (g_nOTAProgress > 0) {
 					if (digitalRead(PWDN_GPIO_NUM) == LOW)	// If is working
 						digitalWrite(PWDN_GPIO_NUM, HIGH);	// turn it off
@@ -1633,8 +1749,6 @@ void setup() {
 					return;
 				}
 
-				g_nLastCameraActivity = millis64();
-
 				if (digitalRead(PWDN_GPIO_NUM) == HIGH)	// If is off
 					digitalWrite(PWDN_GPIO_NUM, LOW);	// turn it on
 
@@ -1645,26 +1759,13 @@ void setup() {
 					pSensorConfig->set_dcw(pSensorConfig, 1);
 				}
 
-				camera_fb_t *pCameraFrameBuffer = esp_camera_fb_get();
-				if (!pCameraFrameBuffer) {
-					pRequest->send(500, "text/plain", "FRAME_BUFFER");
+				AsyncJpegStreamResponse *pResponse = new AsyncJpegStreamResponse();
+				if (!pResponse) {
+					pRequest->send(500, "text/plain", "ALLOC_FAIL");
 					return;
 				}
 
-				AsyncWebServerResponse *pResponse = pRequest->beginResponse_P(200, "image/jpeg", pCameraFrameBuffer->buf, pCameraFrameBuffer->len);
-				pResponse->addHeader("Content-Disposition", "inline; filename=capture.jpg");
 				pResponse->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-				pResponse->addHeader("Access-Control-Expose-Headers", "X-Flash-Status, X-Timestamp");
-				pResponse->addHeader("X-Flash-Status", (g_nCurrentLedBrightness > 0) ? "1" : "0");
-
-				char cBuffer[11];
-				snprintf(cBuffer, sizeof(cBuffer), "%lu", (unsigned long)time(nullptr));
-
-				pResponse->addHeader("X-Timestamp", cBuffer);
-
-				pRequest->onDisconnect([pCameraFrameBuffer]() {
-					esp_camera_fb_return(pCameraFrameBuffer);
-				});
 
 				pRequest->send(pResponse);
 				return;
@@ -1737,6 +1838,11 @@ void setup() {
 					});
 
 					g_bTakingSnapshot = false;
+
+					if (g_nCurrentLedBrightness == g_nTimelapseLedBrightness) {
+						g_nCurrentLedBrightness = 0;
+						ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
+					}
 
 					pRequest->send(pResponse);
 				})) {
@@ -1940,7 +2046,8 @@ void loop() {
 		}
 		// ================================================== Auto Sensor Shutdown Section ================================================== //
 		{
-			if ((nCurrentMillis - g_nLastCameraActivity) >= g_nSensorShutdownInterval && !g_bTakingSnapshot && !g_bTakingTimelapse) {
+			uint32_t nLastActivity = g_nLastCameraActivity;
+			if ((millis() - nLastActivity) >= g_nSensorShutdownInterval && !g_bTakingSnapshot && !g_bTakingTimelapse) {
 				if (digitalRead(PWDN_GPIO_NUM) == LOW /*If is working*/)
 					digitalWrite(PWDN_GPIO_NUM, HIGH);	// turn it off
 
