@@ -631,7 +631,7 @@ void ComposeSettings(char* cBuffer, size_t nSize, size_t nOffset) {
 	//:0000
 	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)TicksToMinutes(g_nTimelapseInterval));
 	//:00000
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_nTimelapseCounter);
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_nTimelapseCounter);	// 10
 	//:000
 	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_nTimelapseLedBrightness);
 
@@ -654,7 +654,7 @@ void ComposeSettings(char* cBuffer, size_t nSize, size_t nOffset) {
 	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)g_pCameraConfig.grab_mode);
 
 	//:00
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)g_pSensorStatus.framesize);
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)g_pSensorStatus.framesize);	// 20
 	//:-0
 	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%d", g_pSensorStatus.brightness);
 	//:-0
@@ -668,7 +668,7 @@ void ComposeSettings(char* cBuffer, size_t nSize, size_t nOffset) {
 	//:0
 	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.special_effect);
 	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.wb_mode);
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.wb_mode);	// 27
 	//:0
 	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.awb);
 	//:0
@@ -1589,8 +1589,8 @@ void setup() {
 					data[24] → Sensor Sharpness
 					data[25] → Sensor Noise Reduction Level
 					data[26] → Sensor Special Effect
-					data[27] → Sensor Automatic White Balance Profile
-					data[28] → Sensor Automatic White Balance Enable
+					data[27] → Sensor Automatic White Balance Enable
+					data[28] → Sensor Automatic White Balance Profile
 					data[29] → Sensor Automatic White Balance Gain
 					data[30] → Sensor Automatic Exposure Enable
 					data[31] → Sensor Automatic Exposure (Night Mode) Enable
