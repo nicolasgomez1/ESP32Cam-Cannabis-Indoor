@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0619_1516WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0619_1741WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -145,45 +145,45 @@ bool g_bTakingTimelapse = false;
 uint8_t g_nOTAProgress = 0;
 
 typedef struct {
-	camera_fb_t *fb;
+	camera_fb_t* fb;
 	size_t index;
 } camera_frame_t;
 
 class AsyncJpegStreamResponse : public AsyncAbstractResponse {
 private:
-	camera_frame_t	_frame;
-	size_t					_index;
-	size_t					_jpg_buf_len;
-	uint8_t*				_jpg_buf;
+	camera_frame_t _frame;
+	size_t _index;
+	size_t _jpg_buf_len;
+	uint8_t* _jpg_buf;
 
 public:
 	AsyncJpegStreamResponse() {
-		_callback						= nullptr;
-		_code								= 200;
-		_contentLength			= 0;
-		_contentType				= "multipart/x-mixed-replace;boundary=frame";
-		_sendContentLength	= false;
-		_chunked						= true;
-		_index							= 0;
-		_jpg_buf_len				= 0;
-		_jpg_buf						= nullptr;
+		_callback = nullptr;
+		_code = 200;
+		_contentLength = 0;
+		_contentType = "multipart/x-mixed-replace;boundary=frame";
+		_sendContentLength = false;
+		_chunked = true;
+		_index = 0;
+		_jpg_buf_len = 0;
+		_jpg_buf = nullptr;
 
 		memset(&_frame, 0, sizeof(camera_frame_t));
 	}
-	
+
 	~AsyncJpegStreamResponse() {
 		if (_frame.fb) {
 			if (_frame.fb->format != PIXFORMAT_JPEG)
 				free(_jpg_buf);
-			
+
 			esp_camera_fb_return(_frame.fb);
 		}
 	}
 
 	bool _sourceValid() const override { return true; }
 
-	size_t _fillBuffer(uint8_t *buf, size_t maxLen) override {
-			size_t ret = _content(buf, maxLen, _index);
+	size_t _fillBuffer(uint8_t* buf, size_t nMaxLen) override {
+			size_t ret = _content(buf, nMaxLen, _index);
 			if (ret != RESPONSE_TRY_AGAIN)
 				_index += ret;
 
@@ -191,7 +191,7 @@ public:
 	}
 
 private:
-	size_t _content(uint8_t *buffer, size_t maxLen, size_t index) {
+	size_t _content(uint8_t* buffer, size_t nMaxLen, size_t nIndex) {
 		if (!_frame.fb || _frame.index == _jpg_buf_len) {
 			if (_frame.fb) {
 					if (_frame.fb->format != PIXFORMAT_JPEG)
@@ -204,7 +204,7 @@ private:
 					_jpg_buf_len = 0;
 			}
 
-			if (maxLen < 64)
+			if (nMaxLen < 64)
 				return RESPONSE_TRY_AGAIN;
 
 			_frame.index = 0;
@@ -227,15 +227,15 @@ private:
 				_jpg_buf_len = _frame.fb->len;
 			}
 
-			const char *boundary = index ? "\r\n--frame\r\n" : "--frame\r\n";
+			const char* boundary = nIndex ? "\r\n--frame\r\n" : "--frame\r\n";
 			size_t blen = strlen(boundary);
 			memcpy(buffer, boundary, blen);
 			buffer += blen;
 
-			size_t hlen = sprintf((char *)buffer,"Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n", _jpg_buf_len);
+			size_t hlen = sprintf((char*)buffer,"Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n", _jpg_buf_len);
 			buffer += hlen;
 
-			size_t dataLen = maxLen - blen - hlen;
+			size_t dataLen = nMaxLen - blen - hlen;
 			if (dataLen > _jpg_buf_len)
 				dataLen = _jpg_buf_len;
 
@@ -246,13 +246,13 @@ private:
 		}
 
 		size_t available = _jpg_buf_len - _frame.index;
-		if (maxLen > available)
-			maxLen = available;
+		if (nMaxLen > available)
+			nMaxLen = available;
 
-		memcpy(buffer, _jpg_buf + _frame.index, maxLen);
-		_frame.index += maxLen;
+		memcpy(buffer, _jpg_buf + _frame.index, nMaxLen);
+		_frame.index += nMaxLen;
 
-		return maxLen;
+		return nMaxLen;
 	}
 };
 
@@ -521,7 +521,7 @@ void SaveSettings() {
 // - Binds the finalized unique hostname directly to the newly acquired local Station network IP.
 // Logs success/error states including the assigned IP address, network conflicts, or failure notices respectively.
 // After completion (regardless of success), the task is suspended until explicitly resumed elsewhere.
-void Thread_WiFiReconnect(void*) {
+void Task_WiFiReconnect(void*) {
 	for (;;) {
 		if (!(WiFi.getMode() & WIFI_AP)) {	// Checks if AP mode is OFF
 			LOGGER(INFO, "Starting Access Point (SSID: %s) mode for reconfiguration...", SECRET_ACCESSPOINT_NAME);
@@ -541,7 +541,7 @@ void Thread_WiFiReconnect(void*) {
 			MDNS.end();
 
 			if (MDNS.begin(SECRET_ACCESSPOINT_NAME)) {
-				LOGGER(INFO, "mDNS for AP Started At: %s.local", SECRET_ACCESSPOINT_NAME);
+				LOGGER(INFO, "mDNS for AP Started At: %s.local.", SECRET_ACCESSPOINT_NAME);
 
 				MDNS.addService("http", "tcp", SECRET_WEBSERVER_PORT);
 			}
@@ -585,7 +585,7 @@ void Thread_WiFiReconnect(void*) {
 					IPAddress pDuplicateIP = MDNS.queryHost(cFinalHostname, 1000);
 
 					if (pDuplicateIP != IPAddress(0, 0, 0, 0)) {
-						LOGGER(WARN, "Conflict! IP %d.%d.%d.%d is using '%s.local'", pDuplicateIP[0], pDuplicateIP[1], pDuplicateIP[2], pDuplicateIP[3], cFinalHostname);
+						LOGGER(WARN, "Conflict! IP %d.%d.%d.%d is using '%s.local'.", pDuplicateIP[0], pDuplicateIP[1], pDuplicateIP[2], pDuplicateIP[3], cFinalHostname);
 
 						nDeviceIndex++;
 
@@ -596,7 +596,7 @@ void Thread_WiFiReconnect(void*) {
 				}
 
 				if (MDNS.begin(cFinalHostname)) {
-					LOGGER(INFO, "mDNS responder Started successfully at: %s.local", cFinalHostname);
+					LOGGER(INFO, "mDNS responder Started successfully at: %s.local.", cFinalHostname);
 
 					MDNS.addService("http", "tcp", SECRET_WEBSERVER_PORT);
 				} else {
@@ -617,7 +617,7 @@ void Thread_WiFiReconnect(void*) {
 // - Uses portMAX_DELAY to stay in a blocked state without consuming CPU cycles until a message arrives.
 // - Once a message is received, it invokes WriteToSD to persist the data.
 // - This task decouples log generation from file system I/O, preventing the main application logic from stalling during slow SD card write operations or mutex contention.
-void Thread_LogProcessor(void*) {
+void Task_LogProcessor(void*) {
 	LogMessage pMSG;
 
 	for (;;) {
@@ -634,7 +634,7 @@ void Thread_LogProcessor(void*) {
 // - This function is essential to ensure hardware-software consistency, especially after the sensor wakes up from a Power Down state (PWDN HIGH to LOW), as the OV3660 volatile registers are reset to factory defaults upon hardware reactivation.
 // - By passing 'FrameSize' as an argument, the function decouples the resolution intent from the rest of the sensor's image state.
 void SetSensorConfig(framesize_t FrameSize) {
-	sensor_t *pSensorConfig = esp_camera_sensor_get();
+	sensor_t* pSensorConfig = esp_camera_sensor_get();
 
 	pSensorConfig->set_framesize(pSensorConfig, FrameSize);
 	pSensorConfig->set_quality(pSensorConfig, g_pSensorStatus.quality);	// Just in case...
@@ -1023,14 +1023,14 @@ void setup() {
 
 	WiFi.mode(WIFI_STA);
 
-	LOGGER(INFO, "Creating WiFi reconnect task thread...");
+	LOGGER(INFO, "Creating WiFi reconnect task...");
 
-	xTaskCreatePinnedToCore(Thread_WiFiReconnect, "WiFiReconnectTask", 4096, NULL, 1, &g_pWiFiReconnect, 0);
+	xTaskCreatePinnedToCore(Task_WiFiReconnect, "WiFiReconnectTask", 4096, NULL, 1, &g_pWiFiReconnect, 0);
 	vTaskSuspend(g_pWiFiReconnect);	// Suspend the task as it's not needed right now
 
-	LOGGER(INFO, "Creating Logging task thread...");
+	LOGGER(INFO, "Creating Logging task...");
 
-	xTaskCreate(Thread_LogProcessor, "LoggingTask", 4096, NULL, 1, NULL);
+	xTaskCreate(Task_LogProcessor, "LoggingTask", 4096, NULL, 1, NULL);
 
 	LOGGER(INFO, "Setting up Web Server...");
 
@@ -1081,7 +1081,7 @@ void setup() {
 				uint64_t nNewValue;
 				uint64_t nSuccessCodeMask = 0;
 				bool bWiFiChanges = false;
-				sensor_t *pSensorConfig = esp_camera_sensor_get();
+				sensor_t* pSensorConfig = esp_camera_sensor_get();
 
 				// =============== Current DateTime =============== //
 				if (const AsyncWebParameter* pParam = pRequest->getParam("time")) {
@@ -1693,7 +1693,7 @@ void setup() {
 				bRestart = true;
 			} else if (pParamAction->value() == "list") {	// This returns file list from any directory in the SD Card
 				if (!SafeSDAccess([&]() {
-					AsyncResponseStream *pResponseStream = pRequest->beginResponseStream("text/plain");
+					AsyncResponseStream* pResponseStream = pRequest->beginResponseStream("text/plain");
 					bool bFirst = true;
 					char cPath[64];
 
@@ -1806,14 +1806,14 @@ void setup() {
 				if (digitalRead(PWDN_GPIO_NUM) == HIGH)	// If is off
 					digitalWrite(PWDN_GPIO_NUM, LOW);	// turn it on
 
-				sensor_t *pSensorConfig = esp_camera_sensor_get();
+				sensor_t* pSensorConfig = esp_camera_sensor_get();
 				if (pSensorConfig->status.framesize != g_pSensorStatus.framesize) {
 					SetSensorConfig(g_pSensorStatus.framesize);	// Monitoring Frame Size
 
 					pSensorConfig->set_dcw(pSensorConfig, 1);
 				}
 
-				AsyncJpegStreamResponse *pResponse = new AsyncJpegStreamResponse();
+				AsyncJpegStreamResponse* pResponse = new AsyncJpegStreamResponse();
 				if (!pResponse) {
 					pRequest->send(500, "text/plain", "ALLOC_FAIL");
 					return;
@@ -1840,7 +1840,7 @@ void setup() {
 					if (digitalRead(PWDN_GPIO_NUM) == HIGH)	// If is off
 						digitalWrite(PWDN_GPIO_NUM, LOW);	// turn it on
 
-					sensor_t *pSensorConfig = esp_camera_sensor_get();
+					sensor_t* pSensorConfig = esp_camera_sensor_get();
 					if (pSensorConfig->status.framesize != g_pCameraConfig.frame_size) {
 						SetSensorConfig(g_pCameraConfig.frame_size);	// Initial & Timelapse Frame Size
 
@@ -1857,7 +1857,7 @@ void setup() {
 						}
 					}
 
-					camera_fb_t *pCameraFrameBuffer = esp_camera_fb_get();
+					camera_fb_t* pCameraFrameBuffer = esp_camera_fb_get();
 					if (!pCameraFrameBuffer) {
 						pRequest->send(500, "text/plain", "FRAME_BUFFER");
 						return;
@@ -1883,7 +1883,7 @@ void setup() {
 							LOGGER(INFO, "Snapshot save to: %s", cFilename);
 					}
 
-					AsyncWebServerResponse *pResponse = pRequest->beginResponse_P(200, "image/jpeg", pCameraFrameBuffer->buf, pCameraFrameBuffer->len);
+					AsyncWebServerResponse* pResponse = pRequest->beginResponse_P(200, "image/jpeg", pCameraFrameBuffer->buf, pCameraFrameBuffer->len);
 					pResponse->addHeader("Content-Disposition", "inline; filename=capture.jpg");
 					pResponse->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
@@ -1910,7 +1910,7 @@ void setup() {
 		pRequest->send(501, "text/plain", "HTTP 501");
 	});
 
-	g_pWebServer.onNotFound([](AsyncWebServerRequest *pRequest) {
+	g_pWebServer.onNotFound([](AsyncWebServerRequest* pRequest) {
 		if (pRequest->method() == HTTP_OPTIONS)
 			pRequest->send(200, "text/plain", "HTTP 200");
 		else
@@ -2041,7 +2041,7 @@ void loop() {
 							if (digitalRead(PWDN_GPIO_NUM) == HIGH)	// If is off
 								digitalWrite(PWDN_GPIO_NUM, LOW);	// turn it on
 
-							sensor_t *pSensorConfig = esp_camera_sensor_get();
+							sensor_t* pSensorConfig = esp_camera_sensor_get();
 							if (pSensorConfig->status.framesize != g_pCameraConfig.frame_size) {
 								SetSensorConfig(g_pCameraConfig.frame_size);	// Initial & Timelapse Frame Size
 
@@ -2056,7 +2056,7 @@ void loop() {
 								vTaskDelay(2000 / portTICK_PERIOD_MS);	// 2000ms
 							}
 
-							camera_fb_t *pCameraFrameBuffer = esp_camera_fb_get();
+							camera_fb_t* pCameraFrameBuffer = esp_camera_fb_get();
 							if (!pCameraFrameBuffer) {
 								LOGGER(ERROR, "Frame Buffer Error. Cannot take Snapshot for Timelapse.");
 							} else {
