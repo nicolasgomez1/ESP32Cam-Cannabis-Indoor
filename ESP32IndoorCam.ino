@@ -10,17 +10,20 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0604_1924WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0619_1516WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
 #include <Update.h>
+#include <ESPmDNS.h>
 #include <Secrets.h>
 #include <HTTPClient.h>
 #include <esp_camera.h>
 #include <ESPAsyncWebServer.h>
 
 /* NOTES:
+	- Default IP for AP is: 192.168.4.1
+	- Default DNS name is SECRET_ACCESSPOINT_NAME + .local (Example: ESP32Cam_Indoor.local). But in case it is taken the system going to add a subfix number to it (Example: ESP32Cam_Indoor.local).
 	- Free pins: 0, 1, 3, 12, 13 & 16
 */
 
@@ -259,13 +262,13 @@ TaskHandle_t g_pWiFiReconnect;											// Task handle for WiFi reconnect logic
 SemaphoreHandle_t g_pSDMutex;												// Mutex to synchronize concurrent access to the SD card across tasks
 QueueHandle_t g_pLogQueue;													// Queue handle for asynchronous logging to decouple SD writes from main logic
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-static inline void SET_BIT_TO_MASK(uint64_t &nMask, uint8_t nBit) { nMask |= (1ULL << nBit); }
+inline void SET_BIT_TO_MASK(uint64_t &nMask, uint8_t nBit) { nMask |= (1ULL << nBit); }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-static inline uint64_t millis64() { return esp_timer_get_time() / 1000ULL; }
+inline uint64_t millis64() { return esp_timer_get_time() / 1000ULL; }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Sets the system time and timezone based on a given Unix timestamp.
 // Updates the system's internal clock to the provided timestamp (seconds since epoch).
-static void SetCurrentDatetime(time_t nTimestamp) {
+void SetCurrentDatetime(time_t nTimestamp) {
 	struct timeval tv;
 	tv.tv_sec = nTimestamp;
 	tv.tv_usec = 0;
@@ -276,7 +279,7 @@ static void SetCurrentDatetime(time_t nTimestamp) {
 // Retrieves the current local time and stores it in the provided tm struct.
 // Uses the system time (UTC) and converts it to local time based on the configured timezone.
 // The result is stored in the pTimeInfo pointer passed by the caller.
-static void GetLocalTimeNow(struct tm* pTimeInfo) {
+void GetLocalTimeNow(struct tm* pTimeInfo) {
 	time_t pTimeNow = time(nullptr);
 	localtime_r(&pTimeNow, pTimeInfo);
 }
@@ -286,7 +289,7 @@ static void GetLocalTimeNow(struct tm* pTimeInfo) {
 // - pFile: reference to the open File object.
 // - cBuffer: pointer to the destination character buffer (must be large enough to hold the line).
 // - nBufferSize: size of the destination buffer (including null terminator).
-static void ReadFromStream(File& pFile, char* cBuffer, size_t nBufferSize) {
+void ReadFromStream(File& pFile, char* cBuffer, size_t nBufferSize) {
 	size_t nLength = pFile.readBytesUntil('\n', cBuffer, nBufferSize - 1);
 
 	cBuffer[nLength] = '\0';
@@ -297,11 +300,11 @@ static void ReadFromStream(File& pFile, char* cBuffer, size_t nBufferSize) {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Provides utility functions to convert between ticks (milliseconds) and human-readable time units.
 // Ticks are assumed to be in milliseconds, as returned by the millis64() function.
-static inline uint64_t TicksToSeconds(uint64_t nTicks) { return nTicks / 1000; }
-static inline uint64_t TicksToMinutes(uint64_t nTicks) { return nTicks / (1000 * 60); }
+inline uint64_t TicksToSeconds(uint64_t nTicks) { return nTicks / 1000; }
+inline uint64_t TicksToMinutes(uint64_t nTicks) { return nTicks / (1000 * 60); }
 
-static inline uint64_t SecondsToTicks(uint64_t nSeconds) { return nSeconds * 1000; }
-static inline uint64_t MinutesToTicks(uint64_t nMinutes) { return nMinutes * 1000 * 60; }
+inline uint64_t SecondsToTicks(uint64_t nSeconds) { return nSeconds * 1000; }
+inline uint64_t MinutesToTicks(uint64_t nMinutes) { return nMinutes * 1000 * 60; }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Executes the provided function (`fn`) with safe, exclusive access to the SD card using the SDMMC peripheral.
 // - Tries to acquire the SD card mutex within 250 ms to ensure thread-safe access across concurrent tasks (e.g., Web Server and Background Logging).
@@ -359,7 +362,7 @@ bool SafeSDAccess(std::function<void()> fn) {
 // - szFileName: Path of the file to write to.
 // - szBuffer: Text string to be written.
 // - bAppend: If true, appends to the file; otherwise, overwrites it.
-static void WriteToSD(const char* szFileName, const char* szBuffer, bool bAppend) {
+void WriteToSD(const char* szFileName, const char* szBuffer, bool bAppend) {
 	SafeSDAccess([&]() {
 		File pFile = SD_MMC.open(szFileName, bAppend ? FILE_APPEND : FILE_WRITE);
 		if (pFile) {
@@ -375,7 +378,7 @@ static void WriteToSD(const char* szFileName, const char* szBuffer, bool bAppend
 // If verification fails, the temporary file is removed and the target file is left unchanged.
 // - szFileName: Path of the file to write to.
 // - szBuffer: Text string to be written.
-static void WriteToSDAtomic(const char* szFileName, const char* szBuffer) {
+void WriteToSDAtomic(const char* szFileName, const char* szBuffer) {
 	SafeSDAccess([&]() {
 		char cTempFileName[64];
 		snprintf(cTempFileName, sizeof(cTempFileName), "%s.atomic", szFileName);
@@ -416,7 +419,7 @@ static void WriteToSDAtomic(const char* szFileName, const char* szBuffer) {
 // - Prepends timestamp (DD/MM/YYYY HH:MM:SS) and severity tag ([INFO], [WARN], [ERROR]).
 // - Enqueues the formatted message for writing to a daily log file (/logs/logging_DD_MM_YYYY.txt).
 // - Non-blocking: if the queue is full, the message is silently dropped.
-static void LOGGER(ERR_TYPE nType, const char* szFormat, ...) {
+void LOGGER(ERR_TYPE nType, const char* szFormat, ...) {
 	LogMessage pMSG;
 	char cPrintType[9];
 	struct tm currentTime;
@@ -505,26 +508,44 @@ void SaveSettings() {
 	});
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Handles automatic WiFi reconnection using the global SSID and password credentials.
+// Handles automatic WiFi reconnection using the global SSID and password credentials for the ESP32-CAM.
 // - Starts a temporary Access Point (SECRET_ACCESSPOINT_NAME) to allow reconfiguration during reconnection attempts.
-// - Sets execution parameters like transmission power and sleep mode upon connection attempt.
-// - Tries to reconnect up to WIFI_MAX_RETRYS times, with a delay of WIFI_RETRY_INTERVAL between each attempt.
+// - Enforces strict hardware execution parameters (TX Power and Sleep modes) upon connection to avoid brownouts and lag.
 // - Once successfully connected, the Access Point is shut down and the mode is switched to station-only (WIFI_STA).
-// - Logs a success message with the assigned IP address upon connection, or an error message if all attempts fail.
-// - After completion (regardless of success), the task is suspended until explicitly resumed elsewhere.
+// Tries to reconnect up to WIFI_MAX_RETRYS times, waiting WIFI_RETRY_INTERVAL between each attempt.
+// Manages mDNS lifecycle and host collision prevention across network interfaces:
+// - Initializes mDNS for the temporary Access Point if active, ensuring visibility during config mode.
+// - Upon successful Station connection, dynamically queries the network via mDNS to probe for hostname conflicts.
+// - Validates responses against a null-state IPAddress(0,0,0,0) constructor to verify if the hostname is unassigned.
+// - Automatically increments a numeric suffix up to UINT8_MAX until an available unique hostname is found.
+// - Binds the finalized unique hostname directly to the newly acquired local Station network IP.
+// Logs success/error states including the assigned IP address, network conflicts, or failure notices respectively.
+// After completion (regardless of success), the task is suspended until explicitly resumed elsewhere.
 void Thread_WiFiReconnect(void*) {
 	for (;;) {
-		if (!(WiFi.getMode() & WIFI_AP)) {
+		if (!(WiFi.getMode() & WIFI_AP)) {	// Checks if AP mode is OFF
 			LOGGER(INFO, "Starting Access Point (SSID: %s) mode for reconfiguration...", SECRET_ACCESSPOINT_NAME);
 
 			WiFi.mode(WIFI_AP_STA);	// Set dual mode, Access Point & Station
 
-			vTaskDelay(100 / portTICK_PERIOD_MS);	// Delay to stabilize AP
+			vTaskDelay(100 / portTICK_PERIOD_MS);
 
 			WiFi.softAP(SECRET_ACCESSPOINT_NAME);	// Start Access Point, while try to connect to WiFi
 		}
 
 		WiFi.disconnect(true);
+
+		vTaskDelay(100 / portTICK_PERIOD_MS);
+
+		if (WiFi.getMode() & WIFI_AP) {	// If AP is up
+			MDNS.end();
+
+			if (MDNS.begin(SECRET_ACCESSPOINT_NAME)) {
+				LOGGER(INFO, "mDNS for AP Started At: %s.local", SECRET_ACCESSPOINT_NAME);
+
+				MDNS.addService("http", "tcp", SECRET_WEBSERVER_PORT);
+			}
+		}
 
 		LOGGER(INFO, "Trying to reconnect WiFi...");
 
@@ -548,6 +569,39 @@ void Thread_WiFiReconnect(void*) {
 				WiFi.mode(WIFI_STA);
 
 				LOGGER(INFO, "Access Point disconnected.");
+
+				MDNS.end();
+
+				char cFinalHostname[32];
+				uint8_t nDeviceIndex = 1;
+				bool bNameFound = false;
+
+				strncpy(cFinalHostname, SECRET_ACCESSPOINT_NAME, sizeof(cFinalHostname) - 1);
+				cFinalHostname[sizeof(cFinalHostname) - 1] = '\0';
+
+				while (!bNameFound && nDeviceIndex <= UINT8_MAX) {	// Check if is DNS name is taken, until found a free one
+					LOGGER(INFO, "Checking if hostname '%s.local' is already taken...", cFinalHostname);
+
+					IPAddress pDuplicateIP = MDNS.queryHost(cFinalHostname, 1000);
+
+					if (pDuplicateIP != IPAddress(0, 0, 0, 0)) {
+						LOGGER(WARN, "Conflict! IP %d.%d.%d.%d is using '%s.local'", pDuplicateIP[0], pDuplicateIP[1], pDuplicateIP[2], pDuplicateIP[3], cFinalHostname);
+
+						nDeviceIndex++;
+
+						snprintf(cFinalHostname, sizeof(cFinalHostname), "%s%d", SECRET_ACCESSPOINT_NAME, nDeviceIndex);
+					} else {
+						bNameFound = true;
+					}
+				}
+
+				if (MDNS.begin(cFinalHostname)) {
+					LOGGER(INFO, "mDNS responder Started successfully at: %s.local", cFinalHostname);
+
+					MDNS.addService("http", "tcp", SECRET_WEBSERVER_PORT);
+				} else {
+					LOGGER(ERROR, "Error setting up mDNS responder.");
+				}
 			} else {
 				LOGGER(ERROR, "Max WiFi reconnect attempts reached.");
 			}
@@ -579,7 +633,7 @@ void Thread_LogProcessor(void*) {
 // - Sequentially applies all remaining image processing parameters (exposure, gain, white balance, etc.) from the global status structure.
 // - This function is essential to ensure hardware-software consistency, especially after the sensor wakes up from a Power Down state (PWDN HIGH to LOW), as the OV3660 volatile registers are reset to factory defaults upon hardware reactivation.
 // - By passing 'FrameSize' as an argument, the function decouples the resolution intent from the rest of the sensor's image state.
-static void SetSensorConfig(framesize_t FrameSize) {
+void SetSensorConfig(framesize_t FrameSize) {
 	sensor_t *pSensorConfig = esp_camera_sensor_get();
 
 	pSensorConfig->set_framesize(pSensorConfig, FrameSize);
@@ -962,7 +1016,7 @@ void setup() {
 	} else {
 		digitalWrite(PWDN_GPIO_NUM, HIGH);	// Pos esp_camera_init call
 
-		LOGGER(INFO, "Turning Off Camera Done!");
+		LOGGER(INFO, "Turning Off Camera");
 	}
 
 	LOGGER(INFO, "Initializing WiFi...");
