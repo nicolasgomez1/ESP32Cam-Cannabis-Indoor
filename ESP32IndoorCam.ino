@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0619_1741WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0620_1344WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -665,7 +665,6 @@ void SetSensorConfig(framesize_t FrameSize) {
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Serializes the current ESP32-CAM configuration into a pre-allocated char buffer using a colon-delimited format.
-// The buffer must be allocated by the caller with sufficient size: 190 bytes.
 // nOffset must point to the position in cBuffer where writing should begin, allowing the caller to prepend a response prefix (e.g. "UPDATE<mask>:" or "REFRESH:") before invoking this function.
 void ComposeSettings(char* cBuffer, size_t nSize, size_t nOffset) {
 	//ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD
@@ -1078,7 +1077,7 @@ void setup() {
 				pRequest->send(200, "text/plain", cBuffer);
 				return;
 			} else if (pParamAction->value() == "update") {	// This is for update Settings
-				uint64_t nNewValue;
+				int64_t nNewValue;
 				uint64_t nSuccessCodeMask = 0;
 				bool bWiFiChanges = false;
 				sensor_t* pSensorConfig = esp_camera_sensor_get();
