@@ -1662,6 +1662,7 @@ void setup() {
 					data[44] → Sensor Color Bars (Test Mode) Enable
 				*/
 				pRequest->send(200, "text/plain", cBuffer);
+				free(cBuffer);
 
 				if (bWiFiChanges) {	// Update WiFi values after response the request. in otherwise the message is not sended.
 					strncpy(g_cSSID, pParamSSID->value().c_str(), sizeof(g_cSSID) - 1);
@@ -2025,7 +2026,7 @@ void loop() {
 				if ((g_nEffectiveStartTimelapse != g_nEffectiveStopTimelapse) &&	// Check if either the timelapse start time and stop time is not the same
 						((g_nEffectiveStartTimelapse < g_nEffectiveStopTimelapse && currentTime.tm_hour >= g_nEffectiveStartTimelapse && currentTime.tm_hour < g_nEffectiveStopTimelapse) // Normal case: timelapse start time is before stop time (e.g., from 7 AM to 7 PM)
 																																											||
-						(g_nEffectiveStartTimelapse >= g_nEffectiveStopTimelapse && (currentTime.tm_hour >= g_nEffectiveStartTimelapse || currentTime.tm_hour < g_nEffectiveStopTimelapse)) // Special case: timelapse schedule crosses midnight (e.g., from 8 PM to 6 AM)
+						(g_nEffectiveStartTimelapse >= g_nEffectiveStopTimelapse && (currentTime.tm_hour >= g_nEffectiveStartTimelapse || currentTime.tm_hour < g_nEffectiveStopTimelapse))	// Special case: timelapse schedule crosses midnight (e.g., from 8 PM to 6 AM)
 				)) {
 					nTimelapseInterval = nCurrentMillis;
 
