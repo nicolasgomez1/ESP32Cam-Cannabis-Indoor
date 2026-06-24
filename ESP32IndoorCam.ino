@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0620_1344WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0623_2220WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -517,7 +517,7 @@ void SaveSettings() {
 // - Initializes mDNS for the temporary Access Point if active, ensuring visibility during config mode.
 // - Upon successful Station connection, dynamically queries the network via mDNS to probe for hostname conflicts.
 // - Validates responses against a null-state IPAddress(0,0,0,0) constructor to verify if the hostname is unassigned.
-// - Automatically increments a numeric suffix up to UINT8_MAX until an available unique hostname is found.
+// - Automatically increments a numeric suffix up to UINT8_MAX - 1 until an available unique hostname is found.
 // - Binds the finalized unique hostname directly to the newly acquired local Station network IP.
 // Logs success/error states including the assigned IP address, network conflicts, or failure notices respectively.
 // After completion (regardless of success), the task is suspended until explicitly resumed elsewhere.
@@ -579,7 +579,7 @@ void Task_WiFiReconnect(void*) {
 				strncpy(cFinalHostname, SECRET_ACCESSPOINT_NAME, sizeof(cFinalHostname) - 1);
 				cFinalHostname[sizeof(cFinalHostname) - 1] = '\0';
 
-				while (!bNameFound && nDeviceIndex <= UINT8_MAX) {	// Check if is DNS name is taken, until found a free one
+				while (!bNameFound && nDeviceIndex <= UINT8_MAX - 1) {	// Check if is DNS name is taken, until found a free one
 					LOGGER(INFO, "Checking if hostname '%s.local' is already taken...", cFinalHostname);
 
 					IPAddress pDuplicateIP = MDNS.queryHost(cFinalHostname, 1000);
@@ -1024,12 +1024,12 @@ void setup() {
 
 	LOGGER(INFO, "Creating WiFi reconnect task...");
 
-	xTaskCreatePinnedToCore(Task_WiFiReconnect, "WiFiReconnectTask", 4096, NULL, 1, &g_pWiFiReconnect, 0);
+	xTaskCreatePinnedToCore(Task_WiFiReconnect, "WiFiReconnectTask", 3072, NULL, 1, &g_pWiFiReconnect, 0);
 	vTaskSuspend(g_pWiFiReconnect);	// Suspend the task as it's not needed right now
 
 	LOGGER(INFO, "Creating Logging task...");
 
-	xTaskCreate(Task_LogProcessor, "LoggingTask", 4096, NULL, 1, NULL);
+	xTaskCreate(Task_LogProcessor, "LoggingTask", 2048, NULL, 1, NULL);
 
 	LOGGER(INFO, "Setting up Web Server...");
 
