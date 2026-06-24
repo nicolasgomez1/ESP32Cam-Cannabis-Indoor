@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0623_2220WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0624_0013WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -1024,12 +1024,12 @@ void setup() {
 
 	LOGGER(INFO, "Creating WiFi reconnect task...");
 
-	xTaskCreatePinnedToCore(Task_WiFiReconnect, "WiFiReconnectTask", 3072, NULL, 1, &g_pWiFiReconnect, 0);
+	xTaskCreatePinnedToCore(Task_WiFiReconnect, "WiFiReconnectTask", 4096, NULL, 1, &g_pWiFiReconnect, 0);
 	vTaskSuspend(g_pWiFiReconnect);	// Suspend the task as it's not needed right now
 
 	LOGGER(INFO, "Creating Logging task...");
 
-	xTaskCreate(Task_LogProcessor, "LoggingTask", 2048, NULL, 1, NULL);
+	xTaskCreate(Task_LogProcessor, "LoggingTask", 4096, NULL, 1, NULL);
 
 	LOGGER(INFO, "Setting up Web Server...");
 
@@ -1710,7 +1710,7 @@ void setup() {
 								bFirst = false;
 
 							pResponseStream->print(pFile.name());
-							pResponseStream->print("|");
+							pResponseStream->print(",");
 							pResponseStream->print(pFile.size());
 						}
 
