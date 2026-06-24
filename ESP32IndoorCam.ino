@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0624_1313r"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0624_1449r"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -140,6 +140,7 @@ bool bForceTryConnectWiFi = true;
 volatile uint32_t g_nLastCameraActivity = 0;
 uint8_t g_nCurrentLedBrightness = 0;
 framesize_t g_CurrentFrameSize;
+bool g_bIsMonitoring = false;
 bool g_bTakingSnapshot = false;
 bool g_bTakingTimelapse = false;
 uint8_t g_nOTAProgress = 0;
@@ -470,7 +471,7 @@ void SaveSettings() {
 
 			pSettingsFile.println(g_pCameraConfig.xclk_freq_hz);
 			pSettingsFile.println(g_pCameraConfig.pixel_format);
-			pSettingsFile.println(g_pCameraConfig.frame_size);	// Initial & Timelapse Frame Size
+			pSettingsFile.println(g_pCameraConfig.frame_size);	// Initial, Timelapse & Snapshot Frame Size
 			pSettingsFile.println(g_pCameraConfig.jpeg_quality);
 			pSettingsFile.println(g_pCameraConfig.fb_count);
 			pSettingsFile.println(g_pCameraConfig.fb_location);
@@ -1802,6 +1803,8 @@ void setup() {
 					return;
 				}
 
+				g_bIsMonitoring = true;
+
 				if (digitalRead(PWDN_GPIO_NUM) == HIGH)	// If is off
 					digitalWrite(PWDN_GPIO_NUM, LOW);	// turn it on
 
@@ -1819,6 +1822,10 @@ void setup() {
 				}
 
 				pResponse->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+
+				pRequest->onDisconnect([]() {
+					g_bIsMonitoring = false;
+				});
 
 				pRequest->send(pResponse);
 				return;
@@ -1841,9 +1848,13 @@ void setup() {
 
 					sensor_t* pSensorConfig = esp_camera_sensor_get();
 					if (pSensorConfig->status.framesize != g_pCameraConfig.frame_size) {
-						SetSensorConfig(g_pCameraConfig.frame_size);	// Initial & Timelapse Frame Size
+						SetSensorConfig(g_pCameraConfig.frame_size);	// Initial, Timelapse & Snapshot Frame Size
 
 						pSensorConfig->set_dcw(pSensorConfig, 0);
+
+						camera_fb_t* pCameraFrameBuffer = esp_camera_fb_get();
+						if (pCameraFrameBuffer)
+							esp_camera_fb_return(pCameraFrameBuffer);
 					}
 
 					if (const AsyncWebParameter* pParam = pRequest->getParam("flash")) {
@@ -1852,7 +1863,7 @@ void setup() {
 
 							ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
 
-							vTaskDelay(2000 / portTICK_PERIOD_MS);	// 2000ms
+							vTaskDelay(1000 / portTICK_PERIOD_MS);	// 1s
 						}
 					}
 
@@ -1890,12 +1901,21 @@ void setup() {
 						esp_camera_fb_return(pCameraFrameBuffer);
 					});
 
-					g_bTakingSnapshot = false;
+					if (g_bIsMonitoring) {
+						sensor_t* pSensorConfig = esp_camera_sensor_get();
+						if (pSensorConfig->status.framesize != g_pSensorStatus.framesize) {
+							SetSensorConfig(g_pSensorStatus.framesize);	// Monitoring Frame Size
 
-					if (g_nCurrentLedBrightness == g_nTimelapseLedBrightness) {
+							pSensorConfig->set_dcw(pSensorConfig, 1);
+						}
+					}
+
+					if (g_nCurrentLedBrightness > 0) {
 						g_nCurrentLedBrightness = 0;
 						ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
 					}
+
+					g_bTakingSnapshot = false;
 
 					pRequest->send(pResponse);
 				})) {
@@ -2049,9 +2069,13 @@ void loop() {
 
 							sensor_t* pSensorConfig = esp_camera_sensor_get();
 							if (pSensorConfig->status.framesize != g_pCameraConfig.frame_size) {
-								SetSensorConfig(g_pCameraConfig.frame_size);	// Initial & Timelapse Frame Size
+								SetSensorConfig(g_pCameraConfig.frame_size);	// Initial, Timelapse & Snapshot Frame Size
 
 								pSensorConfig->set_dcw(pSensorConfig, 0);
+
+								camera_fb_t* pCameraFrameBuffer = esp_camera_fb_get();
+								if (pCameraFrameBuffer)
+									esp_camera_fb_return(pCameraFrameBuffer);
 							}
 
 							if (g_nTimelapseLedBrightness > 0) {
@@ -2059,7 +2083,7 @@ void loop() {
 
 								ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
 
-								vTaskDelay(2000 / portTICK_PERIOD_MS);	// 2000ms
+								vTaskDelay(1000 / portTICK_PERIOD_MS);	// 1s
 							}
 
 							camera_fb_t* pCameraFrameBuffer = esp_camera_fb_get();
@@ -2092,9 +2116,17 @@ void loop() {
 
 							esp_camera_fb_return(pCameraFrameBuffer);
 
-							if (g_nTimelapseLedBrightness > 0) {
-								g_nCurrentLedBrightness = 0;
+							if (g_bIsMonitoring) {
+								sensor_t* pSensorConfig = esp_camera_sensor_get();
+								if (pSensorConfig->status.framesize != g_pSensorStatus.framesize) {
+									SetSensorConfig(g_pSensorStatus.framesize);	// Monitoring Frame Size
 
+									pSensorConfig->set_dcw(pSensorConfig, 1);
+								}
+							}
+
+							if (g_nCurrentLedBrightness > 0) {
+								g_nCurrentLedBrightness = 0;
 								ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
 							}
 
@@ -2107,13 +2139,12 @@ void loop() {
 		// ================================================== Auto Sensor Shutdown Section ================================================== //
 		{
 			uint32_t nLastActivity = g_nLastCameraActivity;
-			if ((millis() - nLastActivity) >= g_nSensorShutdownInterval && !g_bTakingSnapshot && !g_bTakingTimelapse) {
+			if ((millis() - nLastActivity) >= g_nSensorShutdownInterval && !g_bIsMonitoring && !g_bTakingSnapshot && !g_bTakingTimelapse) {
 				if (digitalRead(PWDN_GPIO_NUM) == LOW /*If is working*/)
 					digitalWrite(PWDN_GPIO_NUM, HIGH);	// turn it off
 
 				if (g_nCurrentLedBrightness > 0) {
 					g_nCurrentLedBrightness = 0;
-
 					ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
 				}
 			}
