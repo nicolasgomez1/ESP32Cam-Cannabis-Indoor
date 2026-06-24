@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0624_0013WiP"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
+#define FIRMWAREVERSION "V5_0624_1313r"	// Subfix d (DEBUG), r (RELEASE) & WiP (Work in process)
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -183,25 +183,25 @@ public:
 	bool _sourceValid() const override { return true; }
 
 	size_t _fillBuffer(uint8_t* buf, size_t nMaxLen) override {
-			size_t ret = _content(buf, nMaxLen, _index);
-			if (ret != RESPONSE_TRY_AGAIN)
-				_index += ret;
+		size_t ret = _content(buf, nMaxLen, _index);
+		if (ret != RESPONSE_TRY_AGAIN)
+			_index += ret;
 
-			return ret;
+		return ret;
 	}
 
 private:
 	size_t _content(uint8_t* buffer, size_t nMaxLen, size_t nIndex) {
 		if (!_frame.fb || _frame.index == _jpg_buf_len) {
 			if (_frame.fb) {
-					if (_frame.fb->format != PIXFORMAT_JPEG)
-						free(_jpg_buf);
+				if (_frame.fb->format != PIXFORMAT_JPEG)
+					free(_jpg_buf);
 
-					esp_camera_fb_return(_frame.fb);
+				esp_camera_fb_return(_frame.fb);
 
-					_frame.fb = nullptr;
-					_jpg_buf = nullptr;
-					_jpg_buf_len = 0;
+				_frame.fb = nullptr;
+				_jpg_buf = nullptr;
+				_jpg_buf_len = 0;
 			}
 
 			if (nMaxLen < 64)
@@ -1662,7 +1662,6 @@ void setup() {
 					data[44] → Sensor Color Bars (Test Mode) Enable
 				*/
 				pRequest->send(200, "text/plain", cBuffer);
-				free(cBuffer);
 
 				if (bWiFiChanges) {	// Update WiFi values after response the request. in otherwise the message is not sended.
 					strncpy(g_cSSID, pParamSSID->value().c_str(), sizeof(g_cSSID) - 1);
@@ -1933,15 +1932,20 @@ void setup() {
 		}
 	}, [](AsyncWebServerRequest* pRequest, String strFileName, size_t nIndex, uint8_t* nData, size_t nLength, bool bFinal) {
 		static bool bUpdateError = false;
+		static size_t nFileSize = 0;
 
 		if (!nIndex) {
 			bUpdateError = false;
+			nFileSize = 0;
 
 			Update.abort();
 
 			LOGGER(INFO, "Updating Firmware. File: %s", strFileName.c_str());
 
-			if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+			if (pRequest->hasHeader("File-Size"))
+				nFileSize = atoi(pRequest->getHeader("File-Size")->value().c_str());
+
+			if (!Update.begin(nFileSize > 0 ? nFileSize : UPDATE_SIZE_UNKNOWN)) {
 				g_nOTAProgress = 0;
 				bUpdateError = true;
 
@@ -1955,12 +1959,14 @@ void setup() {
 
 			LOGGER(ERROR, "Firmware update failed. Error: %s", Update.errorString());
 		} else {
-			uint8_t nPercent = (Update.progress() * 100) / Update.size();
+			if (nFileSize > 0) {
+				uint8_t nPercent = (Update.progress() * 100) / nFileSize;
 
-			if (nPercent != g_nOTAProgress) {
-				g_nOTAProgress = nPercent;
+				if (nPercent != g_nOTAProgress) {
+					g_nOTAProgress = nPercent;
 
-				LOGGER(INFO, "Firmware update written: %d%%", nPercent);
+					LOGGER(INFO, "Firmware update written: %d%%", nPercent);
+				}
 			}
 		}
 
