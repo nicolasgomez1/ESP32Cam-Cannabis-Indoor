@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0625_1558r"
+#define FIRMWAREVERSION "V5_0625_1954WiP"
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -509,17 +509,21 @@ void SaveSettings() {
 	});
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Handles automatic WiFi reconnection using the global SSID and password credentials for the ESP32-CAM.
-// - Starts a temporary Access Point (SECRET_ACCESSPOINT_NAME) to allow reconfiguration during reconnection attempts.
-// - Enforces strict hardware execution parameters (TX Power and Sleep modes) upon connection to avoid brownouts and lag.
-// - Once successfully connected, the Access Point is shut down and the mode is switched to station-only (WIFI_STA).
-// Tries to reconnect up to WIFI_MAX_RETRYS times, waiting WIFI_RETRY_INTERVAL between each attempt.
+// Handles automatic WiFi reconnection for the ESP32-CAM using a three-stage fallback strategy:
+// - Stage 1: Always starts a temporary Access Point (SECRET_ACCESSPOINT_NAME) to allow reconfiguration during reconnection attempts.
+// - Stage 2: Attempts to connect to the user-configured WiFi network (g_cSSID / g_cSSIDPWD).
+// - Stage 3: If Stage 2 fails, attempts to connect to the main controller's Access Point (SECRET_ESP32INDOOR_ACCESSPOINT_NAME).
+// Enforces strict hardware execution parameters (TX Power and Sleep modes) upon connection to avoid brownouts and lag.
+// Once successfully connected to either network, the temporary Access Point is shut down and mode is switched to station-only (WIFI_STA).
+// Tries to connect up to WIFI_MAX_RETRYS times per stage, waiting WIFI_RETRY_INTERVAL between each attempt.
 // Manages mDNS lifecycle and host collision prevention across network interfaces:
 // - Initializes mDNS for the temporary Access Point if active, ensuring visibility during config mode.
-// - Upon successful Station connection, dynamically queries the network via mDNS to probe for hostname conflicts.
+// - Upon successful Station connection to user WiFi, dynamically queries the network via mDNS to probe for hostname conflicts.
 // - Validates responses against a null-state IPAddress(0,0,0,0) constructor to verify if the hostname is unassigned.
-// - Automatically increments a numeric suffix up to UINT8_MAX - 1 until an available unique hostname is found.
+// - Automatically increments a numeric suffix up to UINT8_MAX until an available unique hostname is found.
 // - Binds the finalized unique hostname directly to the newly acquired local Station network IP.
+// Upon successful connection to the main controller's AP, registers the camera's assigned IP via HTTP GET to
+// http://192.168.4.1:SECRET_WEBSERVER_PORT/?action=setcamip&ip=<IP> so the controller can reach the camera directly.
 // Logs success/error states including the assigned IP address, network conflicts, or failure notices respectively.
 // After completion (regardless of success), the task is suspended until explicitly resumed elsewhere.
 void Task_WiFiReconnect(void*) {
@@ -550,12 +554,12 @@ void Task_WiFiReconnect(void*) {
 
 		LOGGER(INFO, "Trying to reconnect WiFi...");
 
+		uint8_t nConnectTrysCount = 0;
+
 		if (g_cSSID[0] != '\0') {
 			WiFi.begin(g_cSSID, g_cSSIDPWD);
 			WiFi.setTxPower(g_pWiFiPower);
 			WiFi.setSleep(g_bWiFiSleep);
-
-			uint8_t nConnectTrysCount = 0;
 
 			while (nConnectTrysCount < WIFI_MAX_RETRYS && WiFi.status() != WL_CONNECTED) {
 				nConnectTrysCount++;
@@ -574,13 +578,13 @@ void Task_WiFiReconnect(void*) {
 				MDNS.end();
 
 				char cFinalHostname[32];
-				uint8_t nDeviceIndex = 1;
+				uint8_t nDeviceIndex = 0;
 				bool bNameFound = false;
 
 				strncpy(cFinalHostname, SECRET_ACCESSPOINT_NAME, sizeof(cFinalHostname) - 1);
 				cFinalHostname[sizeof(cFinalHostname) - 1] = '\0';
 
-				while (!bNameFound && nDeviceIndex <= UINT8_MAX - 1) {	// Check if is DNS name is taken, until found a free one
+				while (!bNameFound && nDeviceIndex < UINT8_MAX) {	// Check if is DNS name is taken, until found a free one
 					LOGGER(INFO, "Checking if hostname '%s.local' is already taken...", cFinalHostname);
 
 					IPAddress pDuplicateIP = MDNS.queryHost(cFinalHostname, 1000);
@@ -605,6 +609,50 @@ void Task_WiFiReconnect(void*) {
 				}
 			} else {
 				LOGGER(ERROR, "Max WiFi reconnect attempts reached.");
+			}
+		}
+
+		if (WiFi.status() != WL_CONNECTED) {
+			LOGGER(ERROR, "Trying to cConnect to Main Controller (%s)...", SECRET_ESP32INDOOR_ACCESSPOINT_NAME);
+
+			WiFi.begin(SECRET_ESP32INDOOR_ACCESSPOINT_NAME);
+			WiFi.setTxPower(g_pWiFiPower);
+			WiFi.setSleep(g_bWiFiSleep);
+
+			nConnectTrysCount = 0;
+
+			while (nConnectTrysCount < WIFI_MAX_RETRYS && WiFi.status() != WL_CONNECTED) {
+				nConnectTrysCount++;
+
+				vTaskDelay(WIFI_RETRY_INTERVAL / portTICK_PERIOD_MS);	// Wait before trying again
+			}
+
+			if (WiFi.status() == WL_CONNECTED) {
+				char cCurrentIP[16];
+				snprintf(cCurrentIP, sizeof(cCurrentIP), "%d.%d.%d.%d", WiFi.localIP()[0], WiFi.localIP()[1], WiFi.localIP()[2], WiFi.localIP()[3]);
+
+				LOGGER(INFO, "Connected to Main Controller. IP: %s.", cCurrentIP);
+
+				WiFi.softAPdisconnect(true);
+				WiFi.mode(WIFI_STA);
+
+				LOGGER(INFO, "Access Point disconnected.");
+
+				HTTPClient pHttp;
+				char cURL[65];
+				snprintf(cURL, sizeof(cURL), "http://192.168.4.1:%d/?action=setcamip&ip=%s", SECRET_WEBSERVER_PORT, cCurrentIP);	// WARNING: Hardcode IP and retulization of SECRET_WEBSERVER_PORT variable
+
+				pHttp.begin(cURL);
+
+				int16_t nReturnCode = pHttp.GET();
+				if (nReturnCode == HTTP_CODE_OK)
+					LOGGER(INFO, "Camera IP registered in Main Controller: %s.", cCurrentIP);
+				else
+					LOGGER(ERROR, "Failed to register Camera IP. HTTP code: %d.", nReturnCode);
+
+				pHttp.end();
+			} else {
+				LOGGER(ERROR, "Max WiFi reconnect (to Main Controller) attempts reached.");
 			}
 		}
 
