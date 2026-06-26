@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0625_2109r"
+#define FIRMWAREVERSION "V5_0626_1243r"
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -1172,6 +1172,9 @@ void setup() {
 					if (nNewValue != g_bWiFiSleep) {
 						g_bWiFiSleep = nNewValue;
 
+						if (WiFi.status() == WL_CONNECTED)
+							WiFi.setSleep(g_bWiFiSleep);
+
 						SET_BIT_TO_MASK(nSuccessCodeMask, IDX_WIFI_SLEEP);
 					}
 				}
@@ -1181,6 +1184,9 @@ void setup() {
 
 					if ((wifi_power_t)nNewValue != g_pWiFiPower) {
 						g_pWiFiPower = (wifi_power_t)nNewValue;
+
+						if (WiFi.status() == WL_CONNECTED)
+							WiFi.setTxPower(g_pWiFiPower);
 
 						SET_BIT_TO_MASK(nSuccessCodeMask, IDX_WIFI_POWER);
 					}
