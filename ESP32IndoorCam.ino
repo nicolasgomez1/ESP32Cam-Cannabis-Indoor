@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0625_1954WiP"
+#define FIRMWAREVERSION "V5_0625_2109r"
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -1941,11 +1941,12 @@ void setup() {
 							LOGGER(INFO, "Snapshot save to: %s", cFilename);
 					}
 
-					char cHeaderValue[39];
+					char cHeaderValue[41];
 					snprintf(cHeaderValue, sizeof(cHeaderValue), "inline; filename=%s", cFilename + 11);
 
 					AsyncWebServerResponse* pResponse = pRequest->beginResponse_P(200, "image/jpeg", pCameraFrameBuffer->buf, pCameraFrameBuffer->len);
 					pResponse->addHeader("Content-Disposition", cHeaderValue);
+					pResponse->addHeader("Access-Control-Expose-Headers", "Content-Disposition");
 					pResponse->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
 					pRequest->onDisconnect([pCameraFrameBuffer]() {
