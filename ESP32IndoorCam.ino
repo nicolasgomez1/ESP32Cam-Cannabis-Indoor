@@ -10,13 +10,14 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0626_1243r"
+#define FIRMWAREVERSION "V5_0629_1334r"
 
 #include <WiFi.h>
 #include <SD_MMC.h>
 #include <Update.h>
 #include <ESPmDNS.h>
 #include <Secrets.h>
+#include <DNSServer.h>
 #include <HTTPClient.h>
 #include <esp_camera.h>
 #include <ESPAsyncWebServer.h>
@@ -262,8 +263,9 @@ AsyncWebServer g_pWebServer(SECRET_WEBSERVER_PORT);	// Asynchronous web server i
 TaskHandle_t g_pWiFiReconnect;											// Task handle for WiFi reconnect logic running on core 0
 SemaphoreHandle_t g_pSDMutex;												// Mutex to synchronize concurrent access to the SD card across tasks
 QueueHandle_t g_pLogQueue;													// Queue handle for asynchronous logging to decouple SD writes from main logic
+DNSServer g_pDNSServer;															// DNS server instance to intercept queries and operate the captive portal routing
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-inline void SET_BIT_TO_MASK(uint64_t &nMask, uint8_t nBit) { nMask |= (1ULL << nBit); }
+inline void SET_BIT_TO_MASK(uint64_t& nMask, uint8_t nBit) { nMask |= (1ULL << nBit); }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 inline uint64_t millis64() { return esp_timer_get_time() / 1000ULL; }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -509,23 +511,15 @@ void SaveSettings() {
 	});
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Handles automatic WiFi reconnection for the ESP32-CAM using a three-stage fallback strategy:
-// - Stage 1: Always starts a temporary Access Point (SECRET_ACCESSPOINT_NAME) to allow reconfiguration during reconnection attempts.
-// - Stage 2: Attempts to connect to the user-configured WiFi network (g_cSSID / g_cSSIDPWD).
-// - Stage 3: If Stage 2 fails, attempts to connect to the main controller's Access Point (SECRET_ESP32INDOOR_ACCESSPOINT_NAME).
-// Enforces strict hardware execution parameters (TX Power and Sleep modes) upon connection to avoid brownouts and lag.
-// Once successfully connected to either network, the temporary Access Point is shut down and mode is switched to station-only (WIFI_STA).
-// Tries to connect up to WIFI_MAX_RETRYS times per stage, waiting WIFI_RETRY_INTERVAL between each attempt.
-// Manages mDNS lifecycle and host collision prevention across network interfaces:
+// Handles automatic WiFi reconnection for the ESP32-CAM using a stage fallback strategy:
+// - Initialization: Always starts a temporary Access Point (SECRET_ACCESSPOINT_NAME) and a DNS Server for a Captive Portal task to allow reconfiguration during reconnection attempts.
+// - Stage 1: Attempts to connect to the user-configured WiFi network (g_cSSID / g_cSSIDPWD).
+// - Stage 2: If Stage 1 fails, attempts to connect to the main controller's Access Point (SECRET_ESP32INDOOR_ACCESSPOINT_NAME). Enforces strict hardware execution parameters (TX Power and Sleep modes) upon connection to avoid brownouts and lag. Once successfully connected to either network, the temporary Access Point is shut down and mode is switched to station-only (WIFI_STA). Tries to connect up to WIFI_MAX_RETRYS times per stage, waiting WIFI_RETRY_INTERVAL between each attempt. Manages mDNS lifecycle and host collision prevention across network interfaces:
 // - Initializes mDNS for the temporary Access Point if active, ensuring visibility during config mode.
-// - Upon successful Station connection to user WiFi, dynamically queries the network via mDNS to probe for hostname conflicts.
+// - Upon successful Station connection to user WiFi (Stage 1), dynamically queries the network via mDNS to probe for hostname conflicts.
 // - Validates responses against a null-state IPAddress(0,0,0,0) constructor to verify if the hostname is unassigned.
 // - Automatically increments a numeric suffix up to UINT8_MAX until an available unique hostname is found.
-// - Binds the finalized unique hostname directly to the newly acquired local Station network IP.
-// Upon successful connection to the main controller's AP, registers the camera's assigned IP via HTTP GET to
-// http://192.168.4.1:SECRET_WEBSERVER_PORT/?action=setcamip&ip=<IP> so the controller can reach the camera directly.
-// Logs success/error states including the assigned IP address, network conflicts, or failure notices respectively.
-// After completion (regardless of success), the task is suspended until explicitly resumed elsewhere.
+// - Binds the finalized unique hostname directly to the newly acquired local Station network IP. Upon successful connection to the main controller's AP (Stage 2), registers the camera's assigned IP via HTTP GET to http://192.168.4.1:SECRET_WEBSERVER_PORT/?action=setcamip&ip=<IP> so the controller can reach the camera directly. Logs success/error states including the assigned IP address, network conflicts, or failure notices respectively. After completion (regardless of success), the task is suspended until explicitly resumed elsewhere.
 void Task_WiFiReconnect(void*) {
 	for (;;) {
 		if (!(WiFi.getMode() & WIFI_AP)) {	// Checks if AP mode is OFF
@@ -535,7 +529,16 @@ void Task_WiFiReconnect(void*) {
 
 			vTaskDelay(100 / portTICK_PERIOD_MS);
 
+			WiFi.softAPConfig(IPAddress(8, 8, 8, 8), IPAddress(8, 8, 8, 8), IPAddress(255, 255, 255, 0));
 			WiFi.softAP(SECRET_ACCESSPOINT_NAME);	// Start Access Point, while try to connect to WiFi
+
+			if (g_pDNSServer.start(53, "*", WiFi.softAPIP())) {
+				LOGGER(INFO, "Creating DNS Server for Captive portal task...");
+
+				xTaskCreatePinnedToCore(Task_DNSServer, "DNSServer", 4096, NULL, 1, NULL, 0);
+			} else {
+				LOGGER(ERROR, "Failed to start DNS Server for Captive portal.");
+			}
 		}
 
 		WiFi.disconnect(true);
@@ -673,6 +676,24 @@ void Task_LogProcessor(void*) {
 		if (xQueueReceive(g_pLogQueue, &pMSG, portMAX_DELAY))
 			WriteToSD(pMSG.cFileName, pMSG.cBuffer, true);
 	}
+}
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Operates as the underlying background worker for the Captive Portal's DNS subsystem.
+// - Runs a continuous execution loop restricted exclusively to periods when the Access Point (WIFI_AP) interface is active.
+// - Continuously polls and processes incoming DNS queries via the global DNS server instance (g_pDNSServer), redirecting all client traffic toward the device's softAP IP address for configuration routing.
+// - Implements a non-blocking yields mechanism utilizing a 10ms FreeRTOS delay (vTaskDelay) to prevent CPU starvation and allow lower-priority network operations to execute.
+// - Once the Access Point interface is deactivated (signaling a successful station connection or timeout), gracefully terminates the DNS server instance to release the bound network socket (Port 53).
+// - Self-terminates and deletes its own FreeRTOS task handle dynamically to reclaim allocated heap memory resources.
+void Task_DNSServer(void*) {
+	while (WiFi.getMode() & WIFI_AP) {
+		g_pDNSServer.processNextRequest();
+
+		vTaskDelay(10 / portTICK_PERIOD_MS);
+	}
+
+	g_pDNSServer.stop();
+
+	vTaskDelete(NULL);	// Delete the task when finish
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Synchronizes the physical camera sensor registers with the current values stored in the global g_pSensorStatus structure.
@@ -1988,10 +2009,67 @@ void setup() {
 	});
 
 	g_pWebServer.onNotFound([](AsyncWebServerRequest* pRequest) {
-		if (pRequest->method() == HTTP_OPTIONS)
+		if (pRequest->method() == HTTP_OPTIONS) {
 			pRequest->send(200, "text/plain", "HTTP 200");
-		else
+		} else if (WiFi.getMode() & WIFI_AP) {
+			// TODO: Acá tengo que meter el panel para el esp32cam. Simplemente poder editar el ssid y la password
+			// For captive portal.
+			pRequest->send(200, "text/html", R"rawhtml(
+				<html>
+					<head>
+						<meta name=viewport content=width=device-width,initial-scale=1.0>
+						<meta charset=utf-8>
+						<link rel=icon href=data:,>
+						<link rel='shortcut icon'href=data:,>
+						<title>Cámara</title>
+						<style>
+							body{gap:5px;margin:0;padding:5;color:#9CA6B0;display:flex;flex-wrap:wrap;font:15px Arial;flex-direction:row;background:#131314}
+							card_header{padding:5;min-width:359;flex:1 1 100%;background:rgba(33,37,41,.5);border:1px solid rgba(68,68,68,.3);border-radius:3px}
+							cnt{gap:4px;align-items:center;display:flex;justify-content:center;margin-top:3}
+							button{cursor:pointer;max-width:fit-content;align-self:center;border:none;border-radius:3px;color:#FFF;font:14px Arial;padding:3 5;background:#2A8387}
+							button:active{position:relative;top:1}
+							input{appearance:none;outline:none;background:#2A2F34;border:1px solid#2A8387;border-radius:3px;color:#9CA6B0;width:110}
+						</style>
+						<script>
+							function GetElement(n){return document.getElementById(n)}
+							function GetValue(n){return GetElement(n).value}
+						</script>
+					</head>
+					<body>
+						<card_header>
+							<cnt>WiFi</cnt>
+							<cnt>SSID WiFi:<input type=text id=ssid></cnt>
+							<cnt>Contraseña WiFi:<input type=text id=ssidpwd></cnt>
+							<cnt><button onclick=SendAction('update','ssid',GetValue('ssid'),'ssidpwd',GetValue('ssidpwd'))>Actualizar</button></cnt>
+						</card_header>
+					</body>
+					<script>
+						function SendAction(action,...args){
+							let u=new URL(window.location.href);
+							u.searchParams.set('action',action);
+
+							if(args.length%2==0){
+								for(let i=0;i<args.length;i+=2)
+									u.searchParams.set(args[i],args[i+1]);
+							}
+
+							fetch(u).then(r=>r.text()).then(t=>{
+								if(t.substring(0,6)=='UPDATE'){
+									let data=t.substring(6).split(':');
+
+									GetElement('camssid').value=data[1];
+									GetElement('camssidpwd').value=data[2];
+								}
+							}).catch(()=>{});
+						}
+
+						SendAction('update');
+					</script>
+				</html>
+			)rawhtml");
+		} else {
 			pRequest->send(404, "text/plain", "HTTP 404");
+		}
 	});
 
 	g_pWebServer.on("/ota", HTTP_POST, [](AsyncWebServerRequest* pRequest) {
