@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0629_1334r"
+#define FIRMWAREVERSION "V5_0629_2111r"
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -616,7 +616,7 @@ void Task_WiFiReconnect(void*) {
 		}
 
 		if (WiFi.status() != WL_CONNECTED) {
-			LOGGER(ERROR, "Trying to cConnect to Main Controller (%s)...", SECRET_ESP32INDOOR_ACCESSPOINT_NAME);
+			LOGGER(ERROR, "Trying to connect to Main Controller (%s)...", SECRET_ESP32INDOOR_ACCESSPOINT_NAME);
 
 			WiFi.begin(SECRET_ESP32INDOOR_ACCESSPOINT_NAME);
 			WiFi.setTxPower(g_pWiFiPower);
@@ -2012,7 +2012,6 @@ void setup() {
 		if (pRequest->method() == HTTP_OPTIONS) {
 			pRequest->send(200, "text/plain", "HTTP 200");
 		} else if (WiFi.getMode() & WIFI_AP) {
-			// TODO: Acá tengo que meter el panel para el esp32cam. Simplemente poder editar el ssid y la password
 			// For captive portal.
 			pRequest->send(200, "text/html", R"rawhtml(
 				<html>
@@ -2057,8 +2056,8 @@ void setup() {
 								if(t.substring(0,6)=='UPDATE'){
 									let data=t.substring(6).split(':');
 
-									GetElement('camssid').value=data[1];
-									GetElement('camssidpwd').value=data[2];
+									GetElement('ssid').value=data[1];
+									GetElement('ssidpwd').value=data[2];
 								}
 							}).catch(()=>{});
 						}
