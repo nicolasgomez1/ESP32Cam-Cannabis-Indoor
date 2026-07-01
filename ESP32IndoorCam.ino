@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V5_0629_2111r"
+#define FIRMWAREVERSION "V1_0701_1750"
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -1118,7 +1118,112 @@ void setup() {
 	g_pWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest* pRequest) {
 		const AsyncWebParameter* pParamAction = pRequest->getParam("action");
 		if (pParamAction) {
-			if (pParamAction->value() == "refresh") {	// This is for refresh Panel values
+			if (pParamAction->value() == "restart") {
+				LOGGER(INFO, "Restarting Controller by Web command.");
+
+				bRestart = true;
+			} else if (pParamAction->value() == "list") {	// This returns file list from any directory in the SD Card
+				if (!SafeSDAccess([&]() {
+					AsyncResponseStream* pResponseStream = pRequest->beginResponseStream("text/plain");
+					bool bFirst = true;
+					char cPath[64];
+
+					snprintf(cPath, sizeof(cPath), "/%s", pRequest->getParam("folder")->value().c_str());
+
+					File pWorkingDirectory = SD_MMC.open(cPath);
+					File pFile = pWorkingDirectory.openNextFile();
+
+					while (pFile) {
+						if (!pFile.isDirectory()) {
+							if (!bFirst)
+								pResponseStream->print(":");
+							else
+								bFirst = false;
+
+							pResponseStream->print(pFile.name());
+							pResponseStream->print(",");
+							pResponseStream->print(pFile.size());
+						}
+
+						pFile.close();
+
+						pFile = pWorkingDirectory.openNextFile();
+					}
+
+					pWorkingDirectory.close();
+					pRequest->send(pResponseStream);
+				})) {
+					pRequest->send(500, "text/plain", "NO_SD");
+				}
+
+				return;
+			} else if (pParamAction->value() == "cleanfolder") {
+				if (!SafeSDAccess([&]() {
+					uint32_t nDeleteFilesCount = 0;
+					char cPath[64];
+					char cFilePath[64];
+
+					snprintf(cPath, sizeof(cPath), "/%s", pRequest->getParam("folder")->value().c_str());
+
+					File pWorkingDirectory = SD_MMC.open(cPath);
+					File pFile = pWorkingDirectory.openNextFile();
+
+					while (pFile) {
+						if (!pFile.isDirectory()) {
+							snprintf(cFilePath, sizeof(cFilePath), "%s", pFile.path());
+
+							pFile.close();
+
+							SD_MMC.remove(cFilePath);
+
+							nDeleteFilesCount++;
+						} else {
+							pFile.close();
+						}
+
+						pFile = pWorkingDirectory.openNextFile();
+					}
+
+					pWorkingDirectory.close();
+
+					char cDeletedFileCount[12];
+					snprintf(cDeletedFileCount, sizeof(cDeletedFileCount), "%u", nDeleteFilesCount);
+
+					pRequest->send(200, "text/plain", cDeletedFileCount);
+				})) {
+					pRequest->send(500, "text/plain", "NO_SD");
+				}
+
+				return;
+			} else if (pParamAction->value() == "deletefile") {	// Delete files from any SD folder
+				if (!SafeSDAccess([&]() {
+					bool bSuccess = true;
+					char cPath[64];
+
+					snprintf(cPath, sizeof(cPath), "/%s/%s", pRequest->getParam("folder")->value().c_str(), pRequest->getParam("file")->value().c_str());
+
+					if (SD_MMC.exists(cPath)) {
+						if (!SD_MMC.remove(cPath))
+							bSuccess = false;
+					} else {
+						bSuccess = false;
+					}
+
+					pRequest->send(bSuccess ? 200 : 500, "text/plain", bSuccess ? "DELETE_FILE_SCS" : "DELETE_FILE_ERROR");
+				})) {
+					pRequest->send(500, "text/plain", "NO_SD");
+				}
+
+				return;
+			} else if (pParamAction->value() == "getid") {
+				uint8_t nMac[6];
+				WiFi.macAddress(nMac);
+
+				char cBuffer[18];
+				snprintf(cBuffer, sizeof(cBuffer), "%02X:%02X:%02X:%02X:%02X:%02X", nMac[0], nMac[1], nMac[2], nMac[3], nMac[4], nMac[5]);
+
+				pRequest->send(200, "text/plain", cBuffer);
+			} else if (pParamAction->value() == "refresh") {	// This is for refresh Panel values
 				char cBuffer[40];
 				time_t pTimeNow = time(nullptr);
 
@@ -1759,103 +1864,6 @@ void setup() {
 						vTaskSuspend(g_pWiFiReconnect);
 
 					bForceTryConnectWiFi = true;
-				}
-
-				return;
-			} else if (pParamAction->value() == "restart") {
-				LOGGER(INFO, "Restarting Controller by Web command.");
-
-				bRestart = true;
-			} else if (pParamAction->value() == "list") {	// This returns file list from any directory in the SD Card
-				if (!SafeSDAccess([&]() {
-					AsyncResponseStream* pResponseStream = pRequest->beginResponseStream("text/plain");
-					bool bFirst = true;
-					char cPath[64];
-
-					snprintf(cPath, sizeof(cPath), "/%s", pRequest->getParam("folder")->value().c_str());
-
-					File pWorkingDirectory = SD_MMC.open(cPath);
-					File pFile = pWorkingDirectory.openNextFile();
-
-					while (pFile) {
-						if (!pFile.isDirectory()) {
-							if (!bFirst)
-								pResponseStream->print(":");
-							else
-								bFirst = false;
-
-							pResponseStream->print(pFile.name());
-							pResponseStream->print(",");
-							pResponseStream->print(pFile.size());
-						}
-
-						pFile.close();
-
-						pFile = pWorkingDirectory.openNextFile();
-					}
-
-					pWorkingDirectory.close();
-					pRequest->send(pResponseStream);
-				})) {
-					pRequest->send(500, "text/plain", "NO_SD");
-				}
-
-				return;
-			} else if (pParamAction->value() == "cleanfolder") {
-				if (!SafeSDAccess([&]() {
-					uint32_t nDeleteFilesCount = 0;
-					char cPath[64];
-					char cFilePath[64];
-
-					snprintf(cPath, sizeof(cPath), "/%s", pRequest->getParam("folder")->value().c_str());
-
-					File pWorkingDirectory = SD_MMC.open(cPath);
-					File pFile = pWorkingDirectory.openNextFile();
-
-					while (pFile) {
-						if (!pFile.isDirectory()) {
-							snprintf(cFilePath, sizeof(cFilePath), "%s", pFile.path());
-
-							pFile.close();
-
-							SD_MMC.remove(cFilePath);
-
-							nDeleteFilesCount++;
-						} else {
-							pFile.close();
-						}
-
-						pFile = pWorkingDirectory.openNextFile();
-					}
-
-					pWorkingDirectory.close();
-
-					char cDeletedFileCount[12];
-					snprintf(cDeletedFileCount, sizeof(cDeletedFileCount), "%u", nDeleteFilesCount);
-
-					pRequest->send(200, "text/plain", cDeletedFileCount);
-				})) {
-					pRequest->send(500, "text/plain", "NO_SD");
-				}
-
-				return;
-			} else if (pParamAction->value() == "deletefile") {	// Delete files from any SD folder
-				if (!SafeSDAccess([&]() {
-					bool bSuccess = true;
-					char cPath[64];
-
-					snprintf(cPath, sizeof(cPath), "/%s/%s", pRequest->getParam("folder")->value().c_str(), pRequest->getParam("file")->value().c_str());
-
-					if (SD_MMC.exists(cPath)) {
-						if (!SD_MMC.remove(cPath))
-							bSuccess = false;
-					} else {
-						bSuccess = false;
-					}
-
-					pRequest->send(bSuccess ? 200 : 500, "text/plain", bSuccess ? "DELETE_FILE_SCS" : "DELETE_FILE_ERROR");
-				})) {
-					pRequest->send(500, "text/plain", "NO_SD");
 				}
 
 				return;
