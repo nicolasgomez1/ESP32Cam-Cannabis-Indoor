@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V1_0701_1750"
+#define FIRMWAREVERSION "V1_0701_2322"
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -122,13 +122,13 @@ struct LogMessage {
 // Settings Variables
 char g_cSSID[32];
 char g_cSSIDPWD[32];
-uint64_t g_nWiFiRetryConnectInterval = 0;
+uint32_t g_nWiFiRetryConnectInterval = 0;
 bool g_bWiFiSleep = true;
 wifi_power_t g_pWiFiPower;
-uint64_t g_nSensorShutdownInterval = 0;
+uint32_t g_nSensorShutdownInterval = 0;
 uint8_t g_nEffectiveStartTimelapse = 0;
 uint8_t g_nEffectiveStopTimelapse = 0;
-uint64_t g_nTimelapseInterval = 0;
+uint32_t g_nTimelapseInterval = 0;
 uint16_t g_nTimelapseCounter = 0;
 uint8_t g_nTimelapseLedBrightness = 0;
 uint8_t g_nMonitoringLedBrightness = 0;
@@ -267,8 +267,6 @@ DNSServer g_pDNSServer;															// DNS server instance to intercept querie
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 inline void SET_BIT_TO_MASK(uint64_t& nMask, uint8_t nBit) { nMask |= (1ULL << nBit); }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-inline uint64_t millis64() { return esp_timer_get_time() / 1000ULL; }
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Sets the system time and timezone based on a given Unix timestamp.
 // Updates the system's internal clock to the provided timestamp (seconds since epoch).
 void SetCurrentDatetime(time_t nTimestamp) {
@@ -303,11 +301,11 @@ void ReadFromStream(File& pFile, char* cBuffer, size_t nBufferSize) {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Provides utility functions to convert between ticks (milliseconds) and human-readable time units.
 // Ticks are assumed to be in milliseconds, as returned by the millis64() function.
-inline uint64_t TicksToSeconds(uint64_t nTicks) { return nTicks / 1000; }
-inline uint64_t TicksToMinutes(uint64_t nTicks) { return nTicks / (1000 * 60); }
+inline uint32_t TicksToSeconds(uint32_t nTicks) { return nTicks / 1000; }
+inline uint32_t TicksToMinutes(uint32_t nTicks) { return nTicks / (1000 * 60); }
 
-inline uint64_t SecondsToTicks(uint64_t nSeconds) { return nSeconds * 1000; }
-inline uint64_t MinutesToTicks(uint64_t nMinutes) { return nMinutes * 1000 * 60; }
+inline uint32_t SecondsToTicks(uint32_t nSeconds) { return nSeconds * 1000; }
+inline uint32_t MinutesToTicks(uint32_t nMinutes) { return nMinutes * 1000 * 60; }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Executes the provided function (`fn`) with safe, exclusive access to the SD card using the SDMMC peripheral.
 // - Tries to acquire the SD card mutex within 250 ms to ensure thread-safe access across concurrent tasks (e.g., Web Server and Background Logging).
@@ -2150,8 +2148,8 @@ void setup() {
 }
 
 void loop() {
-	static uint64_t nLastSecondTick = 0;
-	uint64_t nCurrentMillis = millis64();
+	static uint32_t nLastSecondTick = 0;
+	uint32_t nCurrentMillis = millis();
 	// ================================================== Code execution with 1 second interval Section ================================================== //
 	if ((nCurrentMillis - nLastSecondTick) >= 1000) {	// Check if 1 second has passed since the last tick to perform once-per-second tasks
 		nLastSecondTick = nCurrentMillis;
@@ -2167,7 +2165,7 @@ void loop() {
 		}
 		// ================================================== WiFi Section ================================================== //
 		{
-			static uint64_t nLastReconnectAttemptInterval = 0;
+			static uint32_t nLastReconnectAttemptInterval = 0;
 
 			if (eTaskGetState(g_pWiFiReconnect) == eSuspended && WiFi.status() != WL_CONNECTED && (bForceTryConnectWiFi || (nCurrentMillis - nLastReconnectAttemptInterval) >= g_nWiFiRetryConnectInterval)) {
 				nLastReconnectAttemptInterval = nCurrentMillis;
@@ -2177,7 +2175,7 @@ void loop() {
 		}
 		// ================================================== Time Section ================================================== //
 		{
-			static uint64_t nTimestampSaveInterval = 0;
+			static uint32_t nTimestampSaveInterval = 0;
 
 			if ((nCurrentMillis - nTimestampSaveInterval) >= TIME_SAVE_INTERVAL) {
 				nTimestampSaveInterval = nCurrentMillis;
@@ -2189,7 +2187,7 @@ void loop() {
 		}
 		// ================================================== Timelapse Section ================================================== //
 		{
-			static uint64_t nTimelapseInterval = 0;
+			static uint32_t nTimelapseInterval = 0;
 
 			if ((nCurrentMillis - nTimelapseInterval) >= g_nTimelapseInterval) {
 				if ((g_nEffectiveStartTimelapse != g_nEffectiveStopTimelapse) &&	// Check if either the timelapse start time and stop time is not the same
