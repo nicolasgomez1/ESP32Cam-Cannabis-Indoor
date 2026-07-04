@@ -10,7 +10,7 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V1_0701_2322"
+#define FIRMWAREVERSION "V1_0704_0929"
 
 #include <WiFi.h>
 #include <SD_MMC.h>
@@ -63,6 +63,16 @@
 
 #define LED_GPIO_NUM		4
 
+struct LogMessage {
+	char cBuffer[LOG_QUEUE_MAX_MSG_LEN];
+	char cFileName[29];
+};
+
+typedef struct {
+	camera_fb_t* fb;
+	size_t index;
+} camera_frame_t;
+
 enum SETTINGS_CODES {
 	IDX_TIME,
 	IDX_WIFI_SSID,
@@ -113,11 +123,6 @@ enum SETTINGS_CODES {
 
 enum ERR_TYPE { INFO, WARN, ERROR };
 
-struct LogMessage {
-	char cBuffer[LOG_QUEUE_MAX_MSG_LEN];
-	char cFileName[29];
-};
-
 // Global Variables
 // Settings Variables
 char g_cSSID[32];
@@ -145,11 +150,6 @@ bool g_bIsMonitoring = false;
 bool g_bTakingSnapshot = false;
 bool g_bTakingTimelapse = false;
 uint8_t g_nOTAProgress = 0;
-
-typedef struct {
-	camera_fb_t* fb;
-	size_t index;
-} camera_frame_t;
 
 class AsyncJpegStreamResponse : public AsyncAbstractResponse {
 private:
@@ -265,6 +265,8 @@ SemaphoreHandle_t g_pSDMutex;												// Mutex to synchronize concurrent acce
 QueueHandle_t g_pLogQueue;													// Queue handle for asynchronous logging to decouple SD writes from main logic
 DNSServer g_pDNSServer;															// DNS server instance to intercept queries and operate the captive portal routing
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Sets a specific bit to 1 in a 64-bit mask.
+// Applies a bitwise OR operation to turn on the indicated bit position.
 inline void SET_BIT_TO_MASK(uint64_t& nMask, uint8_t nBit) { nMask |= (1ULL << nBit); }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Sets the system time and timezone based on a given Unix timestamp.
@@ -300,7 +302,7 @@ void ReadFromStream(File& pFile, char* cBuffer, size_t nBufferSize) {
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Provides utility functions to convert between ticks (milliseconds) and human-readable time units.
-// Ticks are assumed to be in milliseconds, as returned by the millis64() function.
+// Ticks are assumed to be in milliseconds, as returned by the millis() function.
 inline uint32_t TicksToSeconds(uint32_t nTicks) { return nTicks / 1000; }
 inline uint32_t TicksToMinutes(uint32_t nTicks) { return nTicks / (1000 * 60); }
 
@@ -326,7 +328,7 @@ bool SafeSDAccess(std::function<void()> fn) {
 	struct ScopedMutexUnlock {
 		SemaphoreHandle_t& pMutex;
 		~ScopedMutexUnlock() { xSemaphoreGive(pMutex); }
-	} unlocker{g_pSDMutex};
+	} unlocker{ g_pSDMutex };
 
 	if (!bIsSDInit) {
 		bIsSDInit = SD_MMC.begin("/sdcard", true);
@@ -1057,7 +1059,7 @@ void setup() {
 
 			LOGGER(INFO, "Time file raw content: '%s', length: %d.", cBuffer, nBytesRead);
 
-			time_t nTime = strtol(cBuffer, nullptr, 10);
+			time_t nTime = strtoul(cBuffer, nullptr, 10);
 
 			if (nTime > 1770000000) {	// WARNING: Hardcode check
 				SetCurrentDatetime(nTime);
