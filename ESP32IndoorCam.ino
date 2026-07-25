@@ -10,8 +10,6 @@
 // \__________________________________________________________________________\/
 //  \    \    \    \    \    \    \    \    \    \    \    \    \    \    \    \
 
-#define FIRMWAREVERSION "V1_0704_1342"
-
 #include <WiFi.h>
 #include <SD_MMC.h>
 #include <Update.h>
@@ -121,7 +119,7 @@ enum SETTINGS_CODES {
 	IDX_COLORBAR_ENABLE
 };
 
-enum ERR_TYPE { INFO, WARN, ERROR };
+enum ERR_TYPE { INFO, WARN, ERROR, DEBUG };
 
 // Global Variables
 // Settings Variables
@@ -141,6 +139,7 @@ camera_config_t g_pCameraConfig;
 camera_status_t g_pSensorStatus;
 
 // Internal Variables
+char cFIRMWAREVERSION[16];
 bool bRestart = false;
 bool bForceTryConnectWiFi = true;
 volatile uint32_t g_nLastCameraActivity = 0;
@@ -266,13 +265,11 @@ QueueHandle_t g_pLogQueue;													// Queue handle for asynchronous logging 
 DNSServer g_pDNSServer;															// DNS server instance to intercept queries and operate the captive portal routing
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: Sets a specific bit to 1 within a 64-bit mask.
-// Arguments:   nMask (uint64_t&) - Reference to the target bitmask, nBit (uint8_t) - The bit index to set (0-63).
-// Returns:     None
+// Arguments: nMask (uint64_t&) - Reference to the target bitmask, nBit (uint8_t) - The bit index to set (0-63).
 inline void SET_BIT_TO_MASK(uint64_t& nMask, uint8_t nBit) { nMask |= (1ULL << nBit); }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: Sets the system's current date and time using a Unix timestamp.
-// Arguments:   nTimestamp (time_t) - The epoch timestamp to apply.
-// Returns:     None
+// Arguments: nTimestamp (time_t) - The epoch timestamp to apply.
 void SetCurrentDatetime(time_t nTimestamp) {
 	struct timeval tv;
 	tv.tv_sec = nTimestamp;
@@ -282,16 +279,14 @@ void SetCurrentDatetime(time_t nTimestamp) {
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: Populates a tm structure with the current local system time.
-// Arguments:   pTimeInfo (struct tm*) - Pointer to the target structure where time data will be stored.
-// Returns:     None
+// Arguments: pTimeInfo (struct tm*) - Pointer to the target structure where time data will be stored.
 void GetLocalTimeNow(struct tm* pTimeInfo) {
 	time_t pTimeNow = time(nullptr);
 	localtime_r(&pTimeNow, pTimeInfo);
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: Reads a line from a file stream into a buffer, ensuring null-termination and trimming trailing whitespaces.
-// Arguments:   pFile (File&) - Reference to the file stream, cBuffer (char*) - Destination buffer, nBufferSize (size_t) - Max buffer capacity.
-// Returns:     None
+// Arguments: pFile (File&) - Reference to the file stream, cBuffer (char*) - Destination buffer, nBufferSize (size_t) - Max buffer capacity.
 void ReadFromStream(File& pFile, char* cBuffer, size_t nBufferSize) {
 	size_t nLength = pFile.readBytesUntil('\n', cBuffer, nBufferSize - 1);
 
@@ -302,8 +297,8 @@ void ReadFromStream(File& pFile, char* cBuffer, size_t nBufferSize) {
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: Utility functions to convert between time units (Ticks/Milliseconds, Seconds, and Minutes).
-// Arguments:   Varies by overload (uint32_t or float values representing ticks, seconds, or minutes).
-// Returns:     The converted time value in the requested unit.
+// Arguments: Varies by overload (uint32_t or float values representing ticks, seconds, or minutes).
+// Returns: The converted time value in the requested unit.
 inline uint32_t TicksToSeconds(uint32_t nTicks) { return nTicks / 1000; }
 inline uint32_t TicksToMinutes(uint32_t nTicks) { return nTicks / (1000 * 60); }
 
@@ -311,8 +306,8 @@ inline uint32_t SecondsToTicks(uint32_t nSeconds) { return nSeconds * 1000; }
 inline uint32_t MinutesToTicks(uint32_t nMinutes) { return nMinutes * 1000 * 60; }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: Wrapper function that guarantees mutually exclusive hardware access to the SD_MMC interface using a FreeRTOS mutex and RAII-based automatic unlocking.
-// Arguments:   fn (std::function<void()>) - The callback block containing the transactional file system operations to execute.
-// Returns:     bool - True if the interface was successfully initialized and the callback executed, false if the mutex timed out or hardware detached.
+// Arguments: fn (std::function<void()>) - The callback block containing the transactional file system operations to execute.
+// Returns: bool - True if the interface was successfully initialized and the callback executed, false if the mutex timed out or hardware detached.
 bool SafeSDAccess(std::function<void()> fn) {
 	static bool bIsSDInit = false;
 
@@ -356,8 +351,7 @@ bool SafeSDAccess(std::function<void()> fn) {
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: Opens a target file under a thread-safe context to write or append a block of text, safely closing the file descriptor immediately after.
-// Arguments:   szFileName (const char*) - Target file path, szBuffer (const char*) - Text line to output, bAppend (bool) - Flag to append or overwrite data.
-// Returns:     None
+// Arguments: szFileName (const char*) - Target file path, szBuffer (const char*) - Text line to output, bAppend (bool) - Flag to append or overwrite data.
 void WriteToSD(const char* szFileName, const char* szBuffer, bool bAppend) {
 	SafeSDAccess([&]() {
 		File pFile = SD_MMC.open(szFileName, bAppend ? FILE_APPEND : FILE_WRITE);
@@ -370,8 +364,7 @@ void WriteToSD(const char* szFileName, const char* szBuffer, bool bAppend) {
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: Performs an atomic file update by writing to a temporary file, verifying data integrity via readback comparison, and swapping filenames to prevent corruption.
-// Arguments:   szFileName (const char*) - Final target destination path, szBuffer (const char*) - Full data payload buffer to safely persist.
-// Returns:     None
+// Arguments: szFileName (const char*) - Final target destination path, szBuffer (const char*) - Full data payload buffer to safely persist.
 void WriteToSDAtomic(const char* szFileName, const char* szBuffer) {
 	SafeSDAccess([&]() {
 		char cTempFileName[64];
@@ -406,8 +399,7 @@ void WriteToSDAtomic(const char* szFileName, const char* szBuffer) {
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: Constructs a standardized system event log with real-time timestamps and severity levels, staging it into the asynchronous logging task queue.
-// Arguments:   nType (ERR_TYPE) - Log severity level, szFormat (const char*) - Formatted text format string wrapper, ... - Variadic text arguments.
-// Returns:     None
+// Arguments: nType (ERR_TYPE) - Log severity level, szFormat (const char*) - Formatted text format string wrapper, ... - Variadic text arguments.
 void LOGGER(ERR_TYPE nType, const char* szFormat, ...) {
 	LogMessage pMSG;
 	char cPrintType[9];
@@ -419,6 +411,7 @@ void LOGGER(ERR_TYPE nType, const char* szFormat, ...) {
 		case INFO:	snprintf(cPrintType, sizeof(cPrintType), "[INFO] ");	break;
 		case WARN:	snprintf(cPrintType, sizeof(cPrintType), "[WARN] ");	break;
 		case ERROR:	snprintf(cPrintType, sizeof(cPrintType), "[ERROR] ");	break;
+		case DEBUG:	snprintf(cPrintType, sizeof(cPrintType), "[DEBUG] ");	break;
 	}
 
 	size_t nOffset = snprintf(pMSG.cBuffer, sizeof(pMSG.cBuffer), "%02d/%02d/%04d %02d:%02d:%02d %s", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec, cPrintType);
@@ -434,8 +427,6 @@ void LOGGER(ERR_TYPE nType, const char* szFormat, ...) {
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: Serializes network profiles, timelapse configurations, internal interval frequencies, and all individual camera sensor hardware flags to the SD card.
-// Arguments:   None
-// Returns:     None
 void SaveSettings() {
 	SafeSDAccess([&]() {
 		File pSettingsFile = SD_MMC.open("/settings", FILE_WRITE);
@@ -497,8 +488,8 @@ void SaveSettings() {
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: FreeRTOS task handling camera network attachment, provisioning a localized fallback AP portal, or syncing raw IP details directly with an Indoor Main Controller.
-// Arguments:   pvParameters (void*) - Optional configuration pointer passed during task creation by FreeRTOS (unused).
-// Returns:     None (Infinite loop task that suspends execution context once connectivity targets are finalized).
+// Arguments: pvParameters (void*) - Optional configuration pointer passed during task creation by FreeRTOS (unused).
+// Returns: None (Infinite loop task that suspends execution context once connectivity targets are finalized).
 void Task_WiFiReconnect(void*) {
 	for (;;) {
 		if (!(WiFi.getMode() & WIFI_AP)) {	// Checks if AP mode is OFF
@@ -643,8 +634,8 @@ void Task_WiFiReconnect(void*) {
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: FreeRTOS background worker that pops pending log objects from the message queue and commits them to disk sequentially via the local file system.
-// Arguments:   pvParameters (void*) - Optional configuration pointer passed during task creation by FreeRTOS (unused).
-// Returns:     None (Infinite loop task that blocks until a message item becomes available).
+// Arguments: pvParameters (void*) - Optional configuration pointer passed during task creation by FreeRTOS (unused).
+// Returns: None (Infinite loop task that blocks until a message item becomes available).
 void Task_LogProcessor(void*) {
 	LogMessage pMSG;
 
@@ -655,8 +646,8 @@ void Task_LogProcessor(void*) {
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: FreeRTOS runtime processing task that drives captive portal redirection queries while the device remains detached from local network infrastructure.
-// Arguments:   pvParameters (void*) - Optional configuration pointer passed during task creation by FreeRTOS (unused).
-// Returns:     None (Self-terminating task triggered upon Access Point closure).
+// Arguments: pvParameters (void*) - Optional configuration pointer passed during task creation by FreeRTOS (unused).
+// Returns: None (Self-terminating task triggered upon Access Point closure).
 void Task_DNSServer(void*) {
 	while (WiFi.getMode() & WIFI_AP) {
 		g_pDNSServer.processNextRequest();
@@ -670,8 +661,7 @@ void Task_DNSServer(void*) {
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: Direct-maps camera registry profiles into the active ESP32-Cam sensor architecture, overriding framesize structures, white balance, and manual matrix variables.
-// Arguments:   FrameSize (framesize_t) - Struct definition targeting the resolution aspect ratio to be applied natively to the image sensor loop.
-// Returns:     None
+// Arguments: FrameSize (framesize_t) - Struct definition targeting the resolution aspect ratio to be applied natively to the image sensor loop.
 void SetSensorConfig(framesize_t FrameSize) {
 	sensor_t* pSensorConfig = esp_camera_sensor_get();
 
@@ -704,8 +694,7 @@ void SetSensorConfig(framesize_t FrameSize) {
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: Serializes local network configuration, hardware operational thresholds, active timelapse definitions, and the complete low-level registry matrix of the camera sensor into a single delimited string buffer.
-// Arguments:   cBuffer (char*) - Destination string array, nSize (size_t) - Maximum capacity of the buffer, nOffset (size_t) - Current write position offset inside the buffer.
-// Returns:     None
+// Arguments: cBuffer (char*) - Destination string array, nSize (size_t) - Maximum capacity of the buffer, nOffset (size_t) - Current write position offset inside the buffer.
 void ComposeSettings(char* cBuffer, size_t nSize, size_t nOffset) {
 	//ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD
 	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, "%s:%s", g_cSSID, g_cSSIDPWD);
@@ -803,13 +792,24 @@ void setup() {
 	g_pSDMutex = xSemaphoreCreateMutex();
 	g_pLogQueue = xQueueCreate(LOG_QUEUE_SIZE, sizeof(LogMessage));
 
+	char cMonth[4];
+	uint nDay, nYear, nHour, nMin, nSeg;
+
+	sscanf(__DATE__, "%s %d %d", cMonth, &nDay, &nYear);
+	sscanf(__TIME__, "%d:%d:%d", &nHour, &nMin, &nSeg);
+
+	const char* szMonths = "JanFebMarAprMayJunJulAugSepOctNovDec";
+	uint8_t nMonth = (strstr(szMonths, cMonth) - szMonths) / 3 + 1;
+
+	snprintf(cFIRMWAREVERSION, sizeof(cFIRMWAREVERSION), "V5_%02d%02d_%02d%02d", nMonth, nDay, nHour, nMin);
+
 	LOGGER(INFO, "========== Indoor Camera Controller Started ==========");
-	LOGGER(INFO, "Firmware Version: %s", FIRMWAREVERSION);
+	LOGGER(INFO, "Firmware Version: %s", cFIRMWAREVERSION);
 
 	if (pReason != ESP_RST_POWERON && pReason != ESP_RST_SW) {
 		const char* szReasons[] = { "Unknown", "Power on", "External pin", "Software", "Panic/Exception", "Interrupt watchdog", "Task watchdog", "Other watchdog", "Deepsleep", "Brownout", "SDIO" };
 
-		LOGGER(WARN, "Reset reason: %s", szReasons[pReason]);
+		LOGGER(WARN, "========== Reset reason: %s ==========", szReasons[pReason]);
 	}
 
 	LOGGER(INFO, "Initializing Pins...");
@@ -1204,7 +1204,7 @@ void setup() {
 				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, "%lu", (unsigned long)pTimeNow);
 
 				//:ABCDEFGHIJKLMNÑ
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%s", FIRMWAREVERSION);
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%s", cFIRMWAREVERSION);
 
 				//:000
 				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nOTAProgress);
