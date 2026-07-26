@@ -2020,10 +2020,8 @@ void setup() {
 								if (pSensorConfig->status.framesize != g_pSensorStatus.framesize)
 									SetSensorConfig(g_pSensorStatus.framesize);	// Monitoring Frame Size
 
-								if (nLastLedBrightness > 0) {
-									g_nCurrentLedBrightness = nLastLedBrightness;
-									ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
-								}
+								g_nCurrentLedBrightness = nLastLedBrightness;
+								ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
 							}
 
 							g_bTakingSnapshot = false;
@@ -2035,10 +2033,8 @@ void setup() {
 								if (pSensorConfig->status.framesize != g_pSensorStatus.framesize)
 									SetSensorConfig(g_pSensorStatus.framesize);	// Monitoring Frame Size
 
-								if (nLastLedBrightness > 0) {
-									g_nCurrentLedBrightness = nLastLedBrightness;
-									ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
-								}
+								g_nCurrentLedBrightness = nLastLedBrightness;
+								ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
 							}
 
 							g_bTakingSnapshot = false;
@@ -2048,7 +2044,7 @@ void setup() {
 					}
 				}
 
-				if (nSuccessCodeMask > 0 || nFailureCodeMask > 0) {
+				if (nSuccessCodeMask != 0 || nFailureCodeMask != 0) {
 					char cBuffer[45];
 					//ABC00000000000000000000:00000000000000000000 + null terminator
 					snprintf(cBuffer, sizeof(cBuffer), "MSG%llu:%llu", nSuccessCodeMask, nFailureCodeMask);
@@ -2093,10 +2089,8 @@ void setup() {
 						if (pSensorConfig->status.framesize != g_pSensorStatus.framesize)
 							SetSensorConfig(g_pSensorStatus.framesize);	// Monitoring Frame Size
 
-						if (nLastLedBrightness > 0) {
-							g_nCurrentLedBrightness = nLastLedBrightness;
-							ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
-						}
+						g_nCurrentLedBrightness = nLastLedBrightness;
+						ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
 					}
 
 					g_bCheckingLightLeaks = false;
@@ -2107,6 +2101,7 @@ void setup() {
 				snprintf(cBuffer, sizeof(cBuffer), "MSG%llu:%llu:%u", nSuccessCodeMask, nFailureCodeMask, bLightLeaks);
 
 				pRequest->send(200, "text/plain", cBuffer);
+				return;
 			}
 		}
 
@@ -2363,10 +2358,8 @@ void loop() {
 							if (pSensorConfig->status.framesize != g_pSensorStatus.framesize)
 								SetSensorConfig(g_pSensorStatus.framesize);	// Monitoring Frame Size
 
-							if (nLastLedBrightness > 0) {
-								g_nCurrentLedBrightness = nLastLedBrightness;
-								ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
-							}
+							g_nCurrentLedBrightness = nLastLedBrightness;
+							ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
 						}
 
 						g_bTakingTimelapse = false;
