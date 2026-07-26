@@ -2096,6 +2096,11 @@ void setup() {
 					g_bCheckingLightLeaks = false;
 				}
 
+				if (bLightLeaks)
+					SET_BIT_TO_MASK(nFailureCodeMask, IDX_LIGHT_LEAKS_RESULT);
+				else
+					SET_BIT_TO_MASK(nSuccessCodeMask, IDX_LIGHT_LEAKS_RESULT);
+
 				char cBuffer[47];
 				//ABC00000000000000000000:00000000000000000000:0 + null terminator
 				snprintf(cBuffer, sizeof(cBuffer), "MSG%llu:%llu:%u", nSuccessCodeMask, nFailureCodeMask, bLightLeaks);
