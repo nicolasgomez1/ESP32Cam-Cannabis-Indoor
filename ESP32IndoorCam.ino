@@ -116,7 +116,20 @@ enum SETTINGS_CODES {
 	IDX_H_FLIP,
 	IDX_V_FLIP,
 	IDX_DCW_ENABLE,
-	IDX_COLORBAR_ENABLE
+	IDX_COLORBAR_ENABLE,
+	IDX_CALIBRATE_MINIMUM_LIGHT_LEVEL,
+	IDX_MINIMUM_LIGHT_LEVEL_THRESHOLD
+};
+
+enum MESSAGES_CODES {
+	IDX_OTA_IN_PROGRESS,
+	IDX_TAKING_SNAPSHOT,
+	IDX_TAKING_TIMELAPSE,
+	IDX_MISSING_CALIBRATION,
+	IDX_CHECKING_LIGHT_LEAKS,
+	IDX_FRAMEBUFFER_ERROR,
+	IDX_LIGHT_LEAKS_RESULT,
+	IDX_NO_SD_CANNOT_SAVE_SNAPSHOT
 };
 
 enum ERR_TYPE { INFO, WARN, ERROR, DEBUG };
@@ -137,6 +150,8 @@ uint8_t g_nTimelapseLedBrightness = 0;
 uint8_t g_nMonitoringLedBrightness = 0;
 camera_config_t g_pCameraConfig;
 camera_status_t g_pSensorStatus;
+uint16_t g_nMinimumLightFrameBufferSize = 0;
+uint8_t g_nPercentageOfMinimumLightLevelThreshold = 0;
 
 // Internal Variables
 char cFIRMWAREVERSION[16];
@@ -148,6 +163,7 @@ framesize_t g_CurrentFrameSize;
 bool g_bIsMonitoring = false;
 bool g_bTakingSnapshot = false;
 bool g_bTakingTimelapse = false;
+bool g_bCheckingLightLeaks = false;
 uint8_t g_nOTAProgress = 0;
 
 class AsyncJpegStreamResponse : public AsyncAbstractResponse {
@@ -181,7 +197,9 @@ public:
 		}
 	}
 
-	bool _sourceValid() const override { return true; }
+	bool _sourceValid() const override {
+		return true;
+	}
 
 	size_t _fillBuffer(uint8_t* buf, size_t nMaxLen) override {
 		size_t ret = _content(buf, nMaxLen, _index);
@@ -480,6 +498,9 @@ void SaveSettings() {
 			pSettingsFile.println(g_pSensorStatus.dcw);
 			pSettingsFile.println(g_pSensorStatus.colorbar);
 
+			pSettingsFile.println(g_nMinimumLightFrameBufferSize);
+			pSettingsFile.println(g_nPercentageOfMinimumLightLevelThreshold);
+
 			pSettingsFile.close();
 
 			LOGGER(INFO, "Settings file updated successfully.");
@@ -693,6 +714,28 @@ void SetSensorConfig(framesize_t FrameSize) {
 	pSensorConfig->set_colorbar(pSensorConfig, g_pSensorStatus.colorbar);
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Description: Configures the camera resolution, flushes old frame buffers, and measures the frame buffer payload size.
+// Returns: The size in bytes of the captured frame buffer, or 0 if capture failed.
+size_t GetLightLevel() {
+	SetSensorConfig(FRAMESIZE_96X96);	// Always compare with a common resolution..
+
+	for (uint8_t i = 0; i < g_pCameraConfig.fb_count; i++) {
+		camera_fb_t* pTrashFrameBuffer = esp_camera_fb_get();
+		if (pTrashFrameBuffer)
+			esp_camera_fb_return(pTrashFrameBuffer);
+	}
+
+	camera_fb_t* pCameraFrameBuffer = esp_camera_fb_get();
+	if (!pCameraFrameBuffer)
+		return 0;
+
+	size_t nSize = pCameraFrameBuffer->len;
+
+	esp_camera_fb_return(pCameraFrameBuffer);
+
+	return nSize;
+}
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: Serializes local network configuration, hardware operational thresholds, active timelapse definitions, and the complete low-level registry matrix of the camera sensor into a single delimited string buffer.
 // Arguments: cBuffer (char*) - Destination string array, nSize (size_t) - Maximum capacity of the buffer, nOffset (size_t) - Current write position offset inside the buffer.
 void ComposeSettings(char* cBuffer, size_t nSize, size_t nOffset) {
@@ -783,8 +826,11 @@ void ComposeSettings(char* cBuffer, size_t nSize, size_t nOffset) {
 	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.vflip);
 	//:0
 	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.dcw);
-	//:0 + null terminator
-	snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.colorbar);
+	//:0
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.colorbar);
+
+	//:000 + null terminator
+	snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_nPercentageOfMinimumLightLevelThreshold);
 }
 
 void setup() {
@@ -801,7 +847,7 @@ void setup() {
 	const char* szMonths = "JanFebMarAprMayJunJulAugSepOctNovDec";
 	uint8_t nMonth = (strstr(szMonths, cMonth) - szMonths) / 3 + 1;
 
-	snprintf(cFIRMWAREVERSION, sizeof(cFIRMWAREVERSION), "V5_%02d%02d_%02d%02d", nMonth, nDay, nHour, nMin);
+	snprintf(cFIRMWAREVERSION, sizeof(cFIRMWAREVERSION), "V1_%02d%02d_%02d%02d", nMonth, nDay, nHour, nMin);
 
 	LOGGER(INFO, "========== Indoor Camera Controller Started ==========");
 	LOGGER(INFO, "Firmware Version: %s", cFIRMWAREVERSION);
@@ -996,6 +1042,12 @@ void setup() {
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// COLOR BARS (TEST MODE)
 			g_pSensorStatus.colorbar = atoi(cBuffer);
+			///////////////////////////////////////////////////
+			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// MINIMUM LIGHT LEVEL TO COMPARE WHEN CHECK FOR LIGHT LEAKS
+			g_nMinimumLightFrameBufferSize = atoi(cBuffer);
+			///////////////////////////////////////////////////
+			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// PERCENTAGE OF MINIMUM LIGHT LEVEL THRESHOLD TO COMPARE WHEN CHECK FOR LIGHT LEAKS
+			g_nPercentageOfMinimumLightLevelThreshold = atoi(cBuffer);
 			///////////////////////////////////////////////////
 			pSettingsFile.close();
 		} else {
@@ -1746,9 +1798,9 @@ void setup() {
 					nNewValue = 0;
 
 					if (g_nCurrentLedBrightness == 0) {
-						if ( pParam->value() == "0")	// Monitoring
+						if (pParam->value() == "0")	// Monitoring
 							nNewValue = g_nMonitoringLedBrightness;
-						else													// Timelapse
+						else												// Timelapse
 							nNewValue = g_nTimelapseLedBrightness;
 					}
 
@@ -1756,8 +1808,28 @@ void setup() {
 
 					ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
 				}
+				// =============== CALIBRATE MINIMUM LIGHT LEVEL =============== //
+				if (pRequest->getParam("cmll")) {
+					nNewValue = GetLightLevel();
+
+					if (nNewValue != g_nMinimumLightFrameBufferSize) {
+						g_nMinimumLightFrameBufferSize = nNewValue;
+
+						SET_BIT_TO_MASK(nSuccessCodeMask, IDX_CALIBRATE_MINIMUM_LIGHT_LEVEL);
+					}
+				}
+				// =============== PECENTAGE OF MINIMUM LIGHT LEVEL THRESHOLD =============== //
+				if (const AsyncWebParameter* pParam = pRequest->getParam("mllt")) {
+					nNewValue = pParam->value().toInt();
+
+					if (nNewValue != g_nPercentageOfMinimumLightLevelThreshold) {
+						g_nPercentageOfMinimumLightLevelThreshold = nNewValue;
+
+						SET_BIT_TO_MASK(nSuccessCodeMask, IDX_MINIMUM_LIGHT_LEVEL_THRESHOLD);
+					}
+				}
 				//////////////////////////////////////////////////
-				char cBuffer[217];
+				char cBuffer[221];
 
 				//ABCDEF00000000000000000000:
 				size_t nOffset = snprintf(cBuffer, sizeof(cBuffer), "UPDATE%llu:", nSuccessCodeMask);
@@ -1811,6 +1883,7 @@ void setup() {
 					data[42] → Sensor Vertical Flip
 					data[43] → Sensor Digital Downsample Enable
 					data[44] → Sensor Color Bars (Test Mode) Enable
+					data[45] → Percetage of Minimum Light Level for Light Leaks check
 				*/
 				pRequest->send(200, "text/plain", cBuffer);
 
@@ -1838,23 +1911,8 @@ void setup() {
 
 				return;
 			} else if (pParamAction->value() == "stream") {
-				if (g_nOTAProgress > 0) {
-					if (digitalRead(PWDN_GPIO_NUM) == LOW)	// If is working
-						digitalWrite(PWDN_GPIO_NUM, HIGH);	// turn it off
-
-					pRequest->send(500, "text/plain", "OTA_IN_PROGRESS");
+				if (g_nOTAProgress > 0 || g_bTakingSnapshot || g_bTakingTimelapse || g_bCheckingLightLeaks)
 					return;
-				}
-
-				if (g_bTakingSnapshot) {
-					pRequest->send(500, "text/plain", "TAKING_SNAPSHOT");
-					return;
-				}
-
-				if (g_bTakingTimelapse) {
-					pRequest->send(500, "text/plain", "TAKING_TIMELAPSE");
-					return;
-				}
 
 				g_bIsMonitoring = true;
 
@@ -1862,15 +1920,12 @@ void setup() {
 					digitalWrite(PWDN_GPIO_NUM, LOW);	// turn it on
 
 				sensor_t* pSensorConfig = esp_camera_sensor_get();
-				if (pSensorConfig->status.framesize != g_pSensorStatus.framesize) {
+				if (pSensorConfig->status.framesize != g_pSensorStatus.framesize)
 					SetSensorConfig(g_pSensorStatus.framesize);	// Monitoring Frame Size
-
-					pSensorConfig->set_dcw(pSensorConfig, 1);
-				}
 
 				AsyncJpegStreamResponse* pResponse = new AsyncJpegStreamResponse();
 				if (!pResponse) {
-					pRequest->send(500, "text/plain", "ALLOC_FAIL");
+					g_bIsMonitoring = false;
 					return;
 				}
 
@@ -1883,103 +1938,175 @@ void setup() {
 				pRequest->send(pResponse);
 				return;
 			} else if (pParamAction->value() == "tss") {	// Take a snapshot
-				if (g_nOTAProgress > 0) {
-					pRequest->send(500, "text/plain", "OTA_IN_PROGRESS");
-					return;
-				}
+				uint64_t nSuccessCodeMask = 0;
+				uint64_t nFailureCodeMask = 0;
 
-				if (g_bTakingTimelapse) {
-					pRequest->send(500, "text/plain", "TAKING_TIMELAPSE");
-					return;
-				}
+				if (g_nOTAProgress > 0)
+					SET_BIT_TO_MASK(nFailureCodeMask, IDX_OTA_IN_PROGRESS);
 
-				if (!SafeSDAccess([&]() {
-					g_bTakingSnapshot = true;
+				if (g_bTakingTimelapse)
+					SET_BIT_TO_MASK(nFailureCodeMask, IDX_TAKING_TIMELAPSE);
 
-					if (digitalRead(PWDN_GPIO_NUM) == HIGH)	// If is off
-						digitalWrite(PWDN_GPIO_NUM, LOW);	// turn it on
+				if (g_bCheckingLightLeaks)
+					SET_BIT_TO_MASK(nFailureCodeMask, IDX_CHECKING_LIGHT_LEAKS);
 
-					sensor_t* pSensorConfig = esp_camera_sensor_get();
-					if (pSensorConfig->status.framesize != g_pCameraConfig.frame_size) {
-						SetSensorConfig(g_pCameraConfig.frame_size);	// Initial, Timelapse & Snapshot Frame Size
+				if (nFailureCodeMask == 0) {
+					if (!SafeSDAccess([&]() {
+						g_bTakingSnapshot = true;
 
-						pSensorConfig->set_dcw(pSensorConfig, 0);
+						uint8_t nLastLedBrightness = g_nCurrentLedBrightness;
+
+						if (digitalRead(PWDN_GPIO_NUM) == HIGH)	// If is off
+							digitalWrite(PWDN_GPIO_NUM, LOW);	// turn it on
+
+						sensor_t* pSensorConfig = esp_camera_sensor_get();
+						if (pSensorConfig->status.framesize != g_pCameraConfig.frame_size) {
+							SetSensorConfig(g_pCameraConfig.frame_size);	// Initial, Timelapse & Snapshot Frame Size
+
+							for (uint8_t i = 0; i < g_pCameraConfig.fb_count; i++) {
+								camera_fb_t* pTrashFrameBuffer = esp_camera_fb_get();
+								if (pTrashFrameBuffer)
+									esp_camera_fb_return(pTrashFrameBuffer);
+							}
+						}
+
+						if (const AsyncWebParameter* pParam = pRequest->getParam("flash")) {
+							if (pParam->value() == "1") {
+								g_nCurrentLedBrightness = g_nTimelapseLedBrightness;
+
+								ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
+
+								vTaskDelay(1000 / portTICK_PERIOD_MS);	// 1s
+							}
+						}
 
 						camera_fb_t* pCameraFrameBuffer = esp_camera_fb_get();
-						if (pCameraFrameBuffer)
+						if (!pCameraFrameBuffer)
+							SET_BIT_TO_MASK(nFailureCodeMask, IDX_FRAMEBUFFER_ERROR);
+
+						if (nFailureCodeMask == 0) {
+							char cFilename[35];
+							struct tm currentTime;
+
+							GetLocalTimeNow(&currentTime);
+
+							snprintf(cFilename, sizeof(cFilename), "/snapshots/%02d_%02d_%04d-%02d_%02d_%02d.jpg", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
+
+							File pFile = SD_MMC.open(cFilename, FILE_WRITE);
+							if (pFile) {
+								bool bSaved = false;
+
+								if (pFile.write(pCameraFrameBuffer->buf, pCameraFrameBuffer->len) == pCameraFrameBuffer->len)
+									bSaved = true;
+
+								pFile.close();
+
+								if (bSaved)
+									LOGGER(INFO, "Snapshot save to: %s", cFilename);
+							}
+
+							char cHeaderValue[41];
+							snprintf(cHeaderValue, sizeof(cHeaderValue), "inline; filename=%s", cFilename + 11);
+
+							AsyncWebServerResponse* pResponse = pRequest->beginResponse_P(200, "image/jpeg", pCameraFrameBuffer->buf, pCameraFrameBuffer->len);
+							pResponse->addHeader("Content-Disposition", cHeaderValue);
+							pResponse->addHeader("Access-Control-Expose-Headers", "Content-Disposition");
+							pResponse->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+
 							esp_camera_fb_return(pCameraFrameBuffer);
-					}
 
-					if (const AsyncWebParameter* pParam = pRequest->getParam("flash")) {
-						if (pParam->value() == "1") {
-							g_nCurrentLedBrightness = g_nTimelapseLedBrightness;
+							if (g_bIsMonitoring) {
+								sensor_t* pSensorConfig = esp_camera_sensor_get();
+								if (pSensorConfig->status.framesize != g_pSensorStatus.framesize)
+									SetSensorConfig(g_pSensorStatus.framesize);	// Monitoring Frame Size
 
-							ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
+								if (nLastLedBrightness > 0) {
+									g_nCurrentLedBrightness = nLastLedBrightness;
+									ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
+								}
+							}
 
-							vTaskDelay(1000 / portTICK_PERIOD_MS);	// 1s
+							g_bTakingSnapshot = false;
+
+							pRequest->send(pResponse);
+						} else {
+							if (g_bIsMonitoring) {
+								sensor_t* pSensorConfig = esp_camera_sensor_get();
+								if (pSensorConfig->status.framesize != g_pSensorStatus.framesize)
+									SetSensorConfig(g_pSensorStatus.framesize);	// Monitoring Frame Size
+
+								if (nLastLedBrightness > 0) {
+									g_nCurrentLedBrightness = nLastLedBrightness;
+									ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
+								}
+							}
+
+							g_bTakingSnapshot = false;
 						}
+					})) {
+						SET_BIT_TO_MASK(nFailureCodeMask, IDX_NO_SD_CANNOT_SAVE_SNAPSHOT);
 					}
+				}
 
-					camera_fb_t* pCameraFrameBuffer = esp_camera_fb_get();
-					if (!pCameraFrameBuffer) {
-						pRequest->send(500, "text/plain", "FRAME_BUFFER");
-						return;
-					}
+				if (nSuccessCodeMask > 0 || nFailureCodeMask > 0) {
+					char cBuffer[45];
+					//ABC00000000000000000000:00000000000000000000 + null terminator
+					snprintf(cBuffer, sizeof(cBuffer), "MSG%llu:%llu", nSuccessCodeMask, nFailureCodeMask);
 
-					char cFilename[35];
-					struct tm currentTime;
-
-					GetLocalTimeNow(&currentTime);
-
-					snprintf(cFilename, sizeof(cFilename), "/snapshots/%02d_%02d_%04d-%02d_%02d_%02d.jpg", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
-
-					File pFile = SD_MMC.open(cFilename, FILE_WRITE);
-					if (pFile) {
-						bool bSaved = false;
-
-						if (pFile.write(pCameraFrameBuffer->buf, pCameraFrameBuffer->len) == pCameraFrameBuffer->len)
-							bSaved = true;
-
-						pFile.close();
-
-						if (bSaved)
-							LOGGER(INFO, "Snapshot save to: %s", cFilename);
-					}
-
-					char cHeaderValue[41];
-					snprintf(cHeaderValue, sizeof(cHeaderValue), "inline; filename=%s", cFilename + 11);
-
-					AsyncWebServerResponse* pResponse = pRequest->beginResponse_P(200, "image/jpeg", pCameraFrameBuffer->buf, pCameraFrameBuffer->len);
-					pResponse->addHeader("Content-Disposition", cHeaderValue);
-					pResponse->addHeader("Access-Control-Expose-Headers", "Content-Disposition");
-					pResponse->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-
-					pRequest->onDisconnect([pCameraFrameBuffer]() {
-						esp_camera_fb_return(pCameraFrameBuffer);
-					});
-
-					if (g_bIsMonitoring) {
-						sensor_t* pSensorConfig = esp_camera_sensor_get();
-						if (pSensorConfig->status.framesize != g_pSensorStatus.framesize) {
-							SetSensorConfig(g_pSensorStatus.framesize);	// Monitoring Frame Size
-
-							pSensorConfig->set_dcw(pSensorConfig, 1);
-						}
-					}
-
-					if (g_nCurrentLedBrightness > 0) {
-						g_nCurrentLedBrightness = 0;
-						ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
-					}
-
-					g_bTakingSnapshot = false;
-
-					pRequest->send(pResponse);
-				})) {
-					pRequest->send(500, "text/plain", "NO_SD");
+					pRequest->send(200, "text/plain", cBuffer);
 				}
 
 				return;
+			} else if (pParamAction->value() == "cll") {	// Checks for light leaks.
+				uint64_t nSuccessCodeMask = 0;
+				uint64_t nFailureCodeMask = 0;
+				bool bLightLeaks = false;
+
+				if (g_nOTAProgress > 0)
+					SET_BIT_TO_MASK(nFailureCodeMask, IDX_OTA_IN_PROGRESS);
+
+				if (g_bTakingSnapshot)
+					SET_BIT_TO_MASK(nFailureCodeMask, IDX_TAKING_SNAPSHOT);
+
+				if (g_bTakingTimelapse)
+					SET_BIT_TO_MASK(nFailureCodeMask, IDX_TAKING_TIMELAPSE);
+
+				if (nFailureCodeMask == 0) {
+					g_bCheckingLightLeaks = true;
+
+					uint8_t nLastLedBrightness = g_nCurrentLedBrightness;
+
+					g_nCurrentLedBrightness = 0;
+
+					ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
+
+					vTaskDelay(1000 / portTICK_PERIOD_MS);	// 1s
+
+					if (g_nMinimumLightFrameBufferSize == 0)
+						SET_BIT_TO_MASK(nFailureCodeMask, IDX_MISSING_CALIBRATION);
+
+					if (nFailureCodeMask == 0)
+						bLightLeaks = GetLightLevel() > (uint32_t)(g_nMinimumLightFrameBufferSize) * (100 + g_nPercentageOfMinimumLightLevelThreshold) / 100;
+
+					if (g_bIsMonitoring) {
+						sensor_t* pSensorConfig = esp_camera_sensor_get();
+						if (pSensorConfig->status.framesize != g_pSensorStatus.framesize)
+							SetSensorConfig(g_pSensorStatus.framesize);	// Monitoring Frame Size
+
+						if (nLastLedBrightness > 0) {
+							g_nCurrentLedBrightness = nLastLedBrightness;
+							ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
+						}
+					}
+
+					g_bCheckingLightLeaks = false;
+				}
+
+				char cBuffer[47];
+				//ABC00000000000000000000:00000000000000000000:0 + null terminator
+				snprintf(cBuffer, sizeof(cBuffer), "MSG%llu:%llu:%u", nSuccessCodeMask, nFailureCodeMask, bLightLeaks);
+
+				pRequest->send(200, "text/plain", cBuffer);
 			}
 		}
 
@@ -2167,84 +2294,82 @@ void loop() {
 																																											||
 						(g_nEffectiveStartTimelapse >= g_nEffectiveStopTimelapse && (currentTime.tm_hour >= g_nEffectiveStartTimelapse || currentTime.tm_hour < g_nEffectiveStopTimelapse))	// Special case: timelapse schedule crosses midnight (Example: from 8 PM to 6 AM)
 				)) {
-					nTimelapseInterval = nCurrentMillis;
-
 					if (g_nOTAProgress > 0) {
 						LOGGER(WARN, "Cannot take Snapshot for Timelapse. OTA Update in progress.");
-					} else {
-						if (g_bTakingSnapshot) {
+					} else if (g_bTakingSnapshot) {
 							LOGGER(WARN, "Cannot take Snapshot for Timelapse. Is Taking Snapshot.");
-						} else {
-							g_bTakingTimelapse = true;
+					} else if (g_bCheckingLightLeaks) {
+						LOGGER(WARN, "Cannot take Snapshot for Timelapse. Is Checking Light Leaks.");
+					} else {
+						nTimelapseInterval = nCurrentMillis;
+						g_bTakingTimelapse = true;
 
-							if (digitalRead(PWDN_GPIO_NUM) == HIGH)	// If is off
-								digitalWrite(PWDN_GPIO_NUM, LOW);	// turn it on
+						if (digitalRead(PWDN_GPIO_NUM) == HIGH)	// If is off
+							digitalWrite(PWDN_GPIO_NUM, LOW);	// turn it on
 
-							sensor_t* pSensorConfig = esp_camera_sensor_get();
-							if (pSensorConfig->status.framesize != g_pCameraConfig.frame_size) {
-								SetSensorConfig(g_pCameraConfig.frame_size);	// Initial, Timelapse & Snapshot Frame Size
+						sensor_t* pSensorConfig = esp_camera_sensor_get();
+						if (pSensorConfig->status.framesize != g_pCameraConfig.frame_size) {
+							SetSensorConfig(g_pCameraConfig.frame_size);	// Initial, Timelapse & Snapshot Frame Size
 
-								pSensorConfig->set_dcw(pSensorConfig, 0);
-
-								camera_fb_t* pCameraFrameBuffer = esp_camera_fb_get();
-								if (pCameraFrameBuffer)
-									esp_camera_fb_return(pCameraFrameBuffer);
+							for (uint8_t i = 0; i < g_pCameraConfig.fb_count; i++) {
+								camera_fb_t* pTrashFrameBuffer = esp_camera_fb_get();
+								if (pTrashFrameBuffer)
+									esp_camera_fb_return(pTrashFrameBuffer);
 							}
-
-							if (g_nTimelapseLedBrightness > 0) {
-								g_nCurrentLedBrightness = g_nTimelapseLedBrightness;
-
-								ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
-
-								vTaskDelay(1000 / portTICK_PERIOD_MS);	// 1s
-							}
-
-							camera_fb_t* pCameraFrameBuffer = esp_camera_fb_get();
-							if (!pCameraFrameBuffer) {
-								LOGGER(ERROR, "Frame Buffer Error. Cannot take Snapshot for Timelapse.");
-							} else {
-								SafeSDAccess([&]() {
-									char cFilename[28];
-									snprintf(cFilename, sizeof(cFilename), "/timelapse/capture%05d.jpg", g_nTimelapseCounter);
-
-									File pFile = SD_MMC.open(cFilename, FILE_WRITE);
-									if (pFile) {
-										bool bSaved = false;
-
-										if (pFile.write(pCameraFrameBuffer->buf, pCameraFrameBuffer->len) == pCameraFrameBuffer->len)
-											bSaved = true;
-
-										pFile.close();
-
-										if (bSaved) {
-											g_nTimelapseCounter++;
-
-											SaveSettings();
-
-											LOGGER(INFO, "Snapshot for Timelapse save to: %s", cFilename);
-										}
-									}
-								});
-							}
-
-							esp_camera_fb_return(pCameraFrameBuffer);
-
-							if (g_bIsMonitoring) {
-								sensor_t* pSensorConfig = esp_camera_sensor_get();
-								if (pSensorConfig->status.framesize != g_pSensorStatus.framesize) {
-									SetSensorConfig(g_pSensorStatus.framesize);	// Monitoring Frame Size
-
-									pSensorConfig->set_dcw(pSensorConfig, 1);
-								}
-							}
-
-							if (g_nCurrentLedBrightness > 0) {
-								g_nCurrentLedBrightness = 0;
-								ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
-							}
-
-							g_bTakingTimelapse = false;
 						}
+
+						uint8_t nLastLedBrightness = g_nCurrentLedBrightness;
+
+						if (g_nTimelapseLedBrightness > 0) {
+							g_nCurrentLedBrightness = g_nTimelapseLedBrightness;
+
+							ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
+
+							vTaskDelay(1000 / portTICK_PERIOD_MS);	// 1s
+						}
+
+						camera_fb_t* pCameraFrameBuffer = esp_camera_fb_get();
+						if (!pCameraFrameBuffer) {
+							LOGGER(ERROR, "Frame Buffer Error. Cannot take Snapshot for Timelapse.");
+						} else {
+							SafeSDAccess([&]() {
+								char cFilename[28];
+								snprintf(cFilename, sizeof(cFilename), "/timelapse/capture%05d.jpg", g_nTimelapseCounter);
+
+								File pFile = SD_MMC.open(cFilename, FILE_WRITE);
+								if (pFile) {
+									bool bSaved = false;
+
+									if (pFile.write(pCameraFrameBuffer->buf, pCameraFrameBuffer->len) == pCameraFrameBuffer->len)
+										bSaved = true;
+
+									pFile.close();
+
+									if (bSaved) {
+										g_nTimelapseCounter++;
+
+										SaveSettings();
+
+										LOGGER(INFO, "Snapshot for Timelapse save to: %s", cFilename);
+									}
+								}
+							});
+						}
+
+						esp_camera_fb_return(pCameraFrameBuffer);
+
+						if (g_bIsMonitoring) {
+							sensor_t* pSensorConfig = esp_camera_sensor_get();
+							if (pSensorConfig->status.framesize != g_pSensorStatus.framesize)
+								SetSensorConfig(g_pSensorStatus.framesize);	// Monitoring Frame Size
+
+							if (nLastLedBrightness > 0) {
+								g_nCurrentLedBrightness = nLastLedBrightness;
+								ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
+							}
+						}
+
+						g_bTakingTimelapse = false;
 					}
 				}
 			}
@@ -2252,7 +2377,8 @@ void loop() {
 		// ================================================== Auto Sensor Shutdown Section ================================================== //
 		{
 			uint32_t nLastActivity = g_nLastCameraActivity;
-			if ((millis() - nLastActivity) >= g_nSensorShutdownInterval && !g_bIsMonitoring && !g_bTakingSnapshot && !g_bTakingTimelapse) {
+
+			if ((millis() - nLastActivity) >= g_nSensorShutdownInterval && !g_bIsMonitoring && !g_bTakingSnapshot && !g_bTakingTimelapse && !g_bCheckingLightLeaks) {
 				if (digitalRead(PWDN_GPIO_NUM) == LOW /*If is working*/)
 					digitalWrite(PWDN_GPIO_NUM, HIGH);	// turn it off
 
