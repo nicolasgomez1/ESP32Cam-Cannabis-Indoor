@@ -31,7 +31,6 @@
 #define LOG_QUEUE_MAX_MSG_LEN	256
 
 #define WIFI_MAX_RETRYS			5			// Max WiFi reconnection attempts
-#define WIFI_RETRY_INTERVAL	1000	// 1 second
 
 #define TIMEZONE "ART3"	// POSIX Format
 
@@ -518,7 +517,7 @@ void Task_WiFiReconnect(void*) {
 
 			WiFi.mode(WIFI_AP_STA);	// Set dual mode, Access Point & Station
 
-			vTaskDelay(100 / portTICK_PERIOD_MS);
+			vTaskDelay(pdMS_TO_TICKS(100));
 
 			WiFi.softAPConfig(IPAddress(8, 8, 8, 8), IPAddress(8, 8, 8, 8), IPAddress(255, 255, 255, 0));
 			WiFi.softAP(SECRET_ACCESSPOINT_NAME);	// Start Access Point, while try to connect to WiFi
@@ -534,7 +533,7 @@ void Task_WiFiReconnect(void*) {
 
 		WiFi.disconnect(true);
 
-		vTaskDelay(100 / portTICK_PERIOD_MS);
+		vTaskDelay(pdMS_TO_TICKS(100));
 
 		if (WiFi.getMode() & WIFI_AP) {	// If AP is up
 			MDNS.end();
@@ -555,10 +554,10 @@ void Task_WiFiReconnect(void*) {
 			WiFi.setTxPower(g_pWiFiPower);
 			WiFi.setSleep(g_bWiFiSleep);
 
-			while (nConnectTrysCount < WIFI_MAX_RETRYS && WiFi.status() != WL_CONNECTED) {
+			while (WiFi.status() != WL_CONNECTED && nConnectTrysCount < WIFI_MAX_RETRYS) {
 				nConnectTrysCount++;
 
-				vTaskDelay(WIFI_RETRY_INTERVAL / portTICK_PERIOD_MS);	// Wait before trying again
+				vTaskDelay(pdMS_TO_TICKS(1000));	// Wait before trying again
 			}
 
 			if (WiFi.status() == WL_CONNECTED) {
@@ -615,10 +614,10 @@ void Task_WiFiReconnect(void*) {
 
 			nConnectTrysCount = 0;
 
-			while (nConnectTrysCount < WIFI_MAX_RETRYS && WiFi.status() != WL_CONNECTED) {
+			while (WiFi.status() != WL_CONNECTED && nConnectTrysCount < WIFI_MAX_RETRYS) {
 				nConnectTrysCount++;
 
-				vTaskDelay(WIFI_RETRY_INTERVAL / portTICK_PERIOD_MS);	// Wait before trying again
+				vTaskDelay(pdMS_TO_TICKS(1000));	// Wait before trying again
 			}
 
 			if (WiFi.status() == WL_CONNECTED) {
@@ -668,12 +667,11 @@ void Task_LogProcessor(void*) {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: FreeRTOS runtime processing task that drives captive portal redirection queries while the device remains detached from local network infrastructure.
 // Arguments: pvParameters (void*) - Optional configuration pointer passed during task creation by FreeRTOS (unused).
-// Returns: None (Self-terminating task triggered upon Access Point closure).
 void Task_DNSServer(void*) {
 	while (WiFi.getMode() & WIFI_AP) {
 		g_pDNSServer.processNextRequest();
 
-		vTaskDelay(10 / portTICK_PERIOD_MS);
+		vTaskDelay(pdMS_TO_TICKS(10));
 	}
 
 	g_pDNSServer.stop();
@@ -839,15 +837,17 @@ void setup() {
 	g_pLogQueue = xQueueCreate(LOG_QUEUE_SIZE, sizeof(LogMessage));
 
 	char cMonth[4];
-	uint nDay, nYear, nHour, nMin, nSeg;
+	uint8_t  nDay = 0, nHour = 0, nMin = 0, nSeg = 0;
+	uint16_t nYear = 0;
 
-	sscanf(__DATE__, "%s %d %d", cMonth, &nDay, &nYear);
-	sscanf(__TIME__, "%d:%d:%d", &nHour, &nMin, &nSeg);
+	sscanf(__DATE__, "%3s %hhu %hu", cMonth, &nDay, &nYear);
+	sscanf(__TIME__, "%hhu:%hhu:%hhu", &nHour, &nMin, &nSeg);
 
 	const char* szMonths = "JanFebMarAprMayJunJulAugSepOctNovDec";
-	uint8_t nMonth = (strstr(szMonths, cMonth) - szMonths) / 3 + 1;
+	const char* pMonthPos = strstr(szMonths, cMonth);
+	uint16_t nMonth = pMonthPos ? ((pMonthPos - szMonths) / 3 + 1) : 1;
 
-	snprintf(cFIRMWAREVERSION, sizeof(cFIRMWAREVERSION), "V1_%02d%02d_%02d%02d", nMonth, nDay, nHour, nMin);
+	snprintf(cFIRMWAREVERSION, sizeof(cFIRMWAREVERSION), "V5_%02u%02u_%02u%02u", nMonth, nDay, nHour, nMin);
 
 	LOGGER(INFO, "========== Indoor Camera Controller Started ==========");
 	LOGGER(INFO, "Firmware Version: %s", cFIRMWAREVERSION);
@@ -1976,7 +1976,7 @@ void setup() {
 
 								ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
 
-								vTaskDelay(1000 / portTICK_PERIOD_MS);	// 1s
+								vTaskDelay(pdMS_TO_TICKS(1000));
 							}
 						}
 
@@ -2076,7 +2076,7 @@ void setup() {
 
 					ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
 
-					vTaskDelay(1000 / portTICK_PERIOD_MS);	// 1s
+					vTaskDelay(pdMS_TO_TICKS(1000));
 
 					if (g_nMinimumLightFrameBufferSize == 0)
 						SET_BIT_TO_MASK(nFailureCodeMask, IDX_MISSING_CALIBRATION);
@@ -2325,7 +2325,7 @@ void loop() {
 
 							ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
 
-							vTaskDelay(1000 / portTICK_PERIOD_MS);	// 1s
+							vTaskDelay(pdMS_TO_TICKS(1000));
 						}
 
 						camera_fb_t* pCameraFrameBuffer = esp_camera_fb_get();
