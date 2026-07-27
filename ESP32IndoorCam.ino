@@ -737,8 +737,8 @@ size_t GetLightLevel() {
 // Description: Serializes local network configuration, hardware operational thresholds, active timelapse definitions, and the complete low-level registry matrix of the camera sensor into a single delimited string buffer.
 // Arguments: cBuffer (char*) - Destination string array, nSize (size_t) - Maximum capacity of the buffer, nOffset (size_t) - Current write position offset inside the buffer.
 void ComposeSettings(char* cBuffer, size_t nSize, size_t nOffset) {
-	//ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, "%s:%s", g_cSSID, g_cSSIDPWD);
+	//:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD
+	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%s:%s", g_cSSID, g_cSSIDPWD);
 	//:0000
 	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)TicksToMinutes(g_nWiFiRetryConnectInterval));
 	//:0
@@ -1829,10 +1829,10 @@ void setup() {
 					}
 				}
 				//////////////////////////////////////////////////
-				char cBuffer[221];
+				char cBuffer[220];
 
-				//ABCDEF00000000000000000000:
-				size_t nOffset = snprintf(cBuffer, sizeof(cBuffer), "UPDATE%llu:", nSuccessCodeMask);
+				//ABCDEF00000000000000000000
+				size_t nOffset = snprintf(cBuffer, sizeof(cBuffer), "UPDATE%llu", nSuccessCodeMask);
 
 				ComposeSettings(cBuffer, sizeof(cBuffer), nOffset);
 				// ========================================================================================================================= //
