@@ -286,9 +286,7 @@ DNSServer g_pDNSServer;															// DNS server instance to intercept querie
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: Sets a specific bit to 1 within a 64-bit mask.
 // Arguments: nMask (uint64_t&) - Reference to the target bitmask, nBit (uint8_t) - The bit index to set (0-63).
-inline void SET_BIT_TO_MASK(uint64_t& nMask, uint8_t nBit) {
-	nMask |= (1ULL << nBit);
-}
+inline void SET_BIT_TO_MASK(uint64_t& nMask, uint8_t nBit) { nMask |= (1ULL << nBit); }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: Sets the system's current date and time using a Unix timestamp.
 // Arguments: nTimestamp (time_t) - The epoch timestamp to apply.
@@ -321,19 +319,11 @@ void ReadFromStream(File& pFile, char* cBuffer, size_t nBufferSize) {
 // Description: Utility functions to convert between time units (Ticks/Milliseconds, Seconds, and Minutes).
 // Arguments: Varies by overload (uint32_t or float values representing ticks, seconds, or minutes).
 // Returns: The converted time value in the requested unit.
-inline uint32_t TicksToSeconds(uint32_t nTicks) {
-	return nTicks / 1000;
-}
-inline uint32_t TicksToMinutes(uint32_t nTicks) {
-	return nTicks / (1000 * 60);
-}
+inline uint32_t TicksToSeconds(uint32_t nTicks) { return nTicks / 1000; }
+inline uint32_t TicksToMinutes(uint32_t nTicks) { return nTicks / (1000 * 60); }
 
-inline uint32_t SecondsToTicks(uint32_t nSeconds) {
-	return nSeconds * 1000;
-}
-inline uint32_t MinutesToTicks(uint32_t nMinutes) {
-	return nMinutes * 1000 * 60;
-}
+inline uint32_t SecondsToTicks(uint32_t nSeconds) { return nSeconds * 1000; }
+inline uint32_t MinutesToTicks(uint32_t nMinutes) { return nMinutes * 1000 * 60; }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: Wrapper function that guarantees mutually exclusive hardware access to the SD_MMC interface using a FreeRTOS mutex and RAII-based automatic unlocking.
 // Arguments: fn (std::function<void()>) - The callback block containing the transactional file system operations to execute.
@@ -346,9 +336,7 @@ bool SafeSDAccess(std::function<void()> fn) {
 
 	struct ScopedMutexUnlock {
 		SemaphoreHandle_t& pMutex;
-		~ScopedMutexUnlock() {
-			xSemaphoreGive(pMutex);
-		}
+		~ScopedMutexUnlock() { xSemaphoreGive(pMutex); }
 	} unlocker{ g_pSDMutex };
 
 	if (!bIsSDInit) {
@@ -440,10 +428,10 @@ void LOGGER(ERR_TYPE nType, const char* szFormat, ...) {
 	GetLocalTimeNow(&currentTime);
 
 	switch (nType) {
-		case INFO: snprintf(cPrintType, sizeof(cPrintType), "[INFO] "); break;
-		case WARN: snprintf(cPrintType, sizeof(cPrintType), "[WARN] "); break;
-		case ERROR: snprintf(cPrintType, sizeof(cPrintType), "[ERROR] "); break;
-		case DEBUG: snprintf(cPrintType, sizeof(cPrintType), "[DEBUG] "); break;
+		case INFO:	snprintf(cPrintType, sizeof(cPrintType), "[INFO] "); break;
+		case WARN:	snprintf(cPrintType, sizeof(cPrintType), "[WARN] "); break;
+		case ERROR:	snprintf(cPrintType, sizeof(cPrintType), "[ERROR] "); break;
+		case DEBUG:	snprintf(cPrintType, sizeof(cPrintType), "[DEBUG] "); break;
 	}
 
 	size_t nOffset = snprintf(pMSG.cBuffer, sizeof(pMSG.cBuffer), "%02d/%02d/%04d %02d:%02d:%02d %s", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec, cPrintType);
@@ -742,7 +730,7 @@ size_t GetLightLevel() {
 	vTaskDelay(pdMS_TO_TICKS(1000));
 
 	if (digitalRead(PWDN_GPIO_NUM) == HIGH)	// If is off
-		digitalWrite(PWDN_GPIO_NUM, LOW);	// turn it on
+		digitalWrite(PWDN_GPIO_NUM, LOW);			// turn it on
 
 	sensor_t* pSensorConfig = esp_camera_sensor_get();
 
@@ -2227,69 +2215,69 @@ void setup() {
 	});
 
 	g_pWebServer.on("/ota", HTTP_POST, [](AsyncWebServerRequest* pRequest) {
-			bool bUpdate = !Update.hasError();
+		bool bUpdate = !Update.hasError();
 
-			if (bUpdate) {
-				LOGGER(INFO, "Restarting Controller to do a Firmware Update.");
+		if (bUpdate) {
+			LOGGER(INFO, "Restarting Controller to do a Firmware Update.");
 
-				pRequest->send(200, "text/plain", "OTA_SCS");
+			pRequest->send(200, "text/plain", "OTA_SCS");
 
-				bRestart = true;
-			} else {
-				LOGGER(ERROR, "Final OTA check failed.");
+			bRestart = true;
+		} else {
+			LOGGER(ERROR, "Final OTA check failed.");
 
-				pRequest->send(500, "text/plain", "OTA_ERR");
-			}
-		}, [](AsyncWebServerRequest* pRequest, String strFileName, size_t nIndex, uint8_t* nData, size_t nLength, bool bFinal) {
-			static bool bUpdateError = false;
-			static size_t nFileSize = 0;
+			pRequest->send(500, "text/plain", "OTA_ERR");
+		}
+	}, [](AsyncWebServerRequest* pRequest, String strFileName, size_t nIndex, uint8_t* nData, size_t nLength, bool bFinal) {
+		static bool bUpdateError = false;
+		static size_t nFileSize = 0;
 
-			if (!nIndex) {
-				bUpdateError = false;
-				nFileSize = 0;
+		if (!nIndex) {
+			bUpdateError = false;
+			nFileSize = 0;
 
-				Update.abort();
+			Update.abort();
 
-				LOGGER(INFO, "Updating Firmware. File: %s", strFileName.c_str());
+			LOGGER(INFO, "Updating Firmware. File: %s", strFileName.c_str());
 
-				if (pRequest->hasHeader("File-Size"))
-					nFileSize = atoi(pRequest->getHeader("File-Size")->value().c_str());
+			if (pRequest->hasHeader("File-Size"))
+				nFileSize = atoi(pRequest->getHeader("File-Size")->value().c_str());
 
-				if (!Update.begin(nFileSize > 0 ? nFileSize : UPDATE_SIZE_UNKNOWN)) {
-					g_nOTAProgress = 0;
-					bUpdateError = true;
-
-					LOGGER(ERROR, "Firmware update failed. Error: %s", Update.errorString());
-				}
-			}
-
-			if (!bUpdateError && Update.write(nData, nLength) != nLength) {
+			if (!Update.begin(nFileSize > 0 ? nFileSize : UPDATE_SIZE_UNKNOWN)) {
 				g_nOTAProgress = 0;
 				bUpdateError = true;
 
 				LOGGER(ERROR, "Firmware update failed. Error: %s", Update.errorString());
+			}
+		}
+
+		if (!bUpdateError && Update.write(nData, nLength) != nLength) {
+			g_nOTAProgress = 0;
+			bUpdateError = true;
+
+			LOGGER(ERROR, "Firmware update failed. Error: %s", Update.errorString());
+		} else {
+			if (nFileSize > 0) {
+				uint8_t nPercent = (Update.progress() * 100) / nFileSize;
+
+				if (nPercent != g_nOTAProgress) {
+					g_nOTAProgress = nPercent;
+
+					LOGGER(INFO, "Firmware update written: %d%%", nPercent);
+				}
+			}
+		}
+
+		if (bFinal) {
+			if (!bUpdateError && Update.end(true)) {
+				LOGGER(INFO, "Firmware Update successfully.");
 			} else {
-				if (nFileSize > 0) {
-					uint8_t nPercent = (Update.progress() * 100) / nFileSize;
+				g_nOTAProgress = 0;
 
-					if (nPercent != g_nOTAProgress) {
-						g_nOTAProgress = nPercent;
-
-						LOGGER(INFO, "Firmware update written: %d%%", nPercent);
-					}
-				}
+				LOGGER(ERROR, "Firmware update failed. Error: %s", Update.errorString());
 			}
-
-			if (bFinal) {
-				if (!bUpdateError && Update.end(true)) {
-					LOGGER(INFO, "Firmware Update successfully.");
-				} else {
-					g_nOTAProgress = 0;
-
-					LOGGER(ERROR, "Firmware update failed. Error: %s", Update.errorString());
-				}
-			}
-		});
+		}
+	});
 
 	g_pWebServer.begin();
 
