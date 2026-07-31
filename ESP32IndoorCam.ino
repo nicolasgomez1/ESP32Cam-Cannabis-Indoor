@@ -584,7 +584,7 @@ void Task_WiFiReconnect(void*) {
 				while (!bNameFound && nDeviceIndex < UINT8_MAX) {	// Check if is DNS name is taken, until found a free one
 					LOGGER(INFO, "Checking if hostname '%s.local' is already taken...", cFinalHostname);
 
-					IPAddress pDuplicateIP = MDNS.queryHost(cFinalHostname, 1000);
+					IPAddress pDuplicateIP = MDNS.queryHost(cFinalHostname, 250);
 
 					if (pDuplicateIP != IPAddress(0, 0, 0, 0)) {
 						LOGGER(WARN, "Conflict! IP %d.%d.%d.%d is using '%s.local'.", pDuplicateIP[0], pDuplicateIP[1], pDuplicateIP[2], pDuplicateIP[3], cFinalHostname);
@@ -2103,7 +2103,7 @@ void setup() {
 
 					pRequest->send(200, "text/plain", cBuffer);
 				} else if (cFilename[0] != '\0') {
-					char cHeaderValue[41];
+					/*char cHeaderValue[41];
 					snprintf(cHeaderValue, sizeof(cHeaderValue), "inline; filename=%s", cFilename + 11);
 
 					AsyncWebServerResponse* pResponse = pRequest->beginResponse(SD_MMC, cFilename, "image/jpeg");
@@ -2111,7 +2111,8 @@ void setup() {
 					pResponse->addHeader("Access-Control-Expose-Headers", "Content-Disposition");
 					pResponse->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
-					pRequest->send(pResponse);
+					pRequest->send(pResponse);*/
+					pRequest->send(200, "text/plain", cFilename + 11);
 				}
 
 				return;
