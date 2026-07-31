@@ -716,10 +716,9 @@ void SetSensorConfig(framesize_t FrameSize) {
 	pSensorConfig->set_colorbar(pSensorConfig, g_pSensorStatus.colorbar);
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Description: Configures the camera resolution, flushes old frame buffers, and measures the frame buffer payload size.
-// Returns: The size in bytes of the captured frame buffer, or 0 if capture failed.
+// Description: Temporarily sets sensor to low resolution, flushes stale frame buffers, and calculates the average pixel brightness across the frame buffer.
+// Returns: The average pixel brightness intensity (0 to 255), or 0 if capture failed..
 size_t GetLightLevel() {
-	// TODO: Rehacer descripción, limpiar de comentarios
 	g_bCheckingLightLeaks = true;
 
 	uint8_t nLastLedBrightness = g_nCurrentLedBrightness;
@@ -1312,7 +1311,7 @@ void setup() {
 
 				pRequest->send(200, "text/plain", cBuffer);
 			} else if (pParamAction->value() == "refresh") {	// This is for refresh Panel values
-				char cBuffer[40];
+				char cBuffer[46];
 				time_t pTimeNow = time(nullptr);
 
 				//ABCDEFG
@@ -1327,8 +1326,11 @@ void setup() {
 				//:000
 				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nOTAProgress);
 
-				//:0 + null terminator
-				snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (g_nCurrentLedBrightness > 0) ? 1 : 0);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (g_nCurrentLedBrightness > 0) ? 1 : 0);
+
+				//:00000 + null terminator
+				snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nTimelapseCounter);
 				// ========================================================================================================================= //
 				/*
 					Response structure example: each data[X] is divided by ':'
@@ -1336,6 +1338,7 @@ void setup() {
 					data[1] → Firmware Version
 					data[2] → OTA Update Progress
 					data[3] → Flash On/Off Status
+					data[4] → Timelapse Captures Counter
 				*/
 				pRequest->send(200, "text/plain", cBuffer);
 				return;
