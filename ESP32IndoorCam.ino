@@ -298,11 +298,15 @@ void SetCurrentDatetime(time_t nTimestamp) {
 	settimeofday(&tv, nullptr);
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Description: Populates a tm structure with the current local system time.
-// Arguments: pTimeInfo (struct tm*) - Pointer to the target structure where time data will be stored.
-void GetLocalTimeNow(struct tm* pTimeInfo) {
+// Description: Populates a tm structure if provided, and returns the epoch timestamp.
+// Arguments: pTimeInfo (struct tm*) - Optional pointer to target structure (defaults to nullptr).
+// Returns: time_t - Current epoch timestamp.
+time_t GetLocalTimeNow(struct tm* pTimeInfo = nullptr) {
 	time_t pTimeNow = time(nullptr);
-	localtime_r(&pTimeNow, pTimeInfo);
+	if (pTimeInfo != nullptr)
+		localtime_r(&pTimeNow, pTimeInfo);
+
+	return pTimeNow;
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Description: Reads a line from a file stream into a buffer, ensuring null-termination and trimming trailing whitespaces.
@@ -423,9 +427,9 @@ void WriteToSDAtomic(const char* szFileName, const char* szBuffer) {
 void LOGGER(ERR_TYPE nType, const char* szFormat, ...) {
 	LogMessage pMSG;
 	char cPrintType[9];
-	struct tm currentTime;
+	struct tm pCurrentTime;
 
-	GetLocalTimeNow(&currentTime);
+	GetLocalTimeNow(&pCurrentTime);
 
 	switch (nType) {
 		case INFO:	snprintf(cPrintType, sizeof(cPrintType), "[INFO] "); break;
@@ -434,14 +438,14 @@ void LOGGER(ERR_TYPE nType, const char* szFormat, ...) {
 		case DEBUG:	snprintf(cPrintType, sizeof(cPrintType), "[DEBUG] "); break;
 	}
 
-	size_t nOffset = snprintf(pMSG.cBuffer, sizeof(pMSG.cBuffer), "%02d/%02d/%04d %02d:%02d:%02d %s", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec, cPrintType);
+	size_t nOffset = snprintf(pMSG.cBuffer, sizeof(pMSG.cBuffer), "%02d/%02d/%04d %02d:%02d:%02d %s", pCurrentTime.tm_mday, pCurrentTime.tm_mon + 1, pCurrentTime.tm_year + 1900, pCurrentTime.tm_hour, pCurrentTime.tm_min, pCurrentTime.tm_sec, cPrintType);
 
 	va_list args;
 	va_start(args, szFormat);
 	vsnprintf(pMSG.cBuffer + nOffset, sizeof(pMSG.cBuffer) - nOffset, szFormat, args);
 	va_end(args);
 
-	snprintf(pMSG.cFileName, sizeof(pMSG.cFileName), "/logs/logging_%02d_%02d_%04d.txt", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900);
+	snprintf(pMSG.cFileName, sizeof(pMSG.cFileName), "/logs/logging_%02d_%02d_%04d.txt", pCurrentTime.tm_mday, pCurrentTime.tm_mon + 1, pCurrentTime.tm_year + 1900);
 
 	xQueueSend(g_pLogQueue, &pMSG, 0);
 }
@@ -1119,7 +1123,7 @@ void setup() {
 			LOGGER(ERROR, "Failed to open Settings file.");
 		}
 		///////////////////////////////////////////////////
-		struct tm currentTime;
+		struct tm pCurrentTime;
 
 		LOGGER(INFO, "Getting Datetime from SD Card...");
 
@@ -1153,9 +1157,9 @@ void setup() {
 
 				LOGGER(INFO, "Current datetime setted.");
 
-				GetLocalTimeNow(&currentTime);
+				GetLocalTimeNow(&pCurrentTime);
 
-				LOGGER(INFO, "Current Datetime: %02d/%02d/%04d %02d:%02d:%02d.", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
+				LOGGER(INFO, "Current Datetime: %02d/%02d/%04d %02d:%02d:%02d.", pCurrentTime.tm_mday, pCurrentTime.tm_mon + 1, pCurrentTime.tm_year + 1900, pCurrentTime.tm_hour, pCurrentTime.tm_min, pCurrentTime.tm_sec);
 			} else {
 				LOGGER(ERROR, "Time file contains invalid timestamp: %ld.", nTime);
 			}
@@ -1312,7 +1316,7 @@ void setup() {
 				pRequest->send(200, "text/plain", cBuffer);
 			} else if (pParamAction->value() == "refresh") {	// This is for refresh Panel values
 				char cBuffer[46];
-				time_t pTimeNow = time(nullptr);
+				time_t pTimeNow = GetLocalTimeNow();
 
 				//ABCDEFG
 				size_t nOffset = snprintf(cBuffer, sizeof(cBuffer), "REFRESH");
@@ -1352,9 +1356,9 @@ void setup() {
 				if (const AsyncWebParameter* pParam = pRequest->getParam("time")) {
 					SetCurrentDatetime(pParam->value().toInt());
 
-					struct tm currentTime;
-					GetLocalTimeNow(&currentTime);
-					LOGGER(INFO, "New Datetime: %02d/%02d/%04d %02d:%02d:%02d.", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
+					struct tm pCurrentTime;
+					GetLocalTimeNow(&pCurrentTime);
+					LOGGER(INFO, "New Datetime: %02d/%02d/%04d %02d:%02d:%02d.", pCurrentTime.tm_mday, pCurrentTime.tm_mon + 1, pCurrentTime.tm_year + 1900, pCurrentTime.tm_hour, pCurrentTime.tm_min, pCurrentTime.tm_sec);
 
 					SET_BIT_TO_MASK(nSuccessCodeMask, IDX_TIME);
 				}
@@ -1492,7 +1496,7 @@ void setup() {
 				if (const AsyncWebParameter* pParam = pRequest->getParam("xclk")) {
 					nNewValue = pParam->value().toInt();
 
-					if ((nNewValue * 1000000U) != g_pCameraConfig.xclk_freq_hz) {
+					if (nNewValue * 1000000U != g_pCameraConfig.xclk_freq_hz) {
 						g_pCameraConfig.xclk_freq_hz = nNewValue * 1000000U;
 
 						if (pSensorConfig->set_xclk(pSensorConfig, LEDC_TIMER_0, nNewValue) == 0)
@@ -2050,11 +2054,11 @@ void setup() {
 							SET_BIT_TO_MASK(nFailureCodeMask, IDX_FRAMEBUFFER_ERROR);
 
 						if (nFailureCodeMask == 0) {
-							struct tm currentTime;
+							struct tm pCurrentTime;
 
-							GetLocalTimeNow(&currentTime);
+							GetLocalTimeNow(&pCurrentTime);
 
-							snprintf(cFilename, sizeof(cFilename), "/snapshots/%02d_%02d_%04d-%02d_%02d_%02d.jpg", currentTime.tm_mday, currentTime.tm_mon + 1, currentTime.tm_year + 1900, currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
+							snprintf(cFilename, sizeof(cFilename), "/snapshots/%02d_%02d_%04d-%02d_%02d_%02d.jpg", pCurrentTime.tm_mday, pCurrentTime.tm_mon + 1, pCurrentTime.tm_year + 1900, pCurrentTime.tm_hour, pCurrentTime.tm_min, pCurrentTime.tm_sec);
 
 							File pFile = SD_MMC.open(cFilename, FILE_WRITE);
 							if (pFile) {
@@ -2292,12 +2296,11 @@ void loop() {
 	static uint32_t nLastSecondTick = 0;
 	uint32_t nCurrentMillis = millis();
 	// ================================================== Code execution with 1 second interval Section ================================================== //
-	if ((nCurrentMillis - nLastSecondTick) >= 1000) {	// Check if 1 second has passed since the last tick to perform once-per-second tasks
+	if (nCurrentMillis - nLastSecondTick >= 1000) {	// Check if 1 second has passed since the last tick to perform once-per-second tasks
 		nLastSecondTick = nCurrentMillis;
 
-		time_t pTimeNow = time(nullptr);
-		struct tm currentTime;
-		localtime_r(&pTimeNow, &currentTime);
+		struct tm pCurrentTime;
+		time_t pTimeNow = GetLocalTimeNow(&pCurrentTime);
 		// ================================================== OTA Section ================================================== //
 		if (bRestart) {
 			delay(2000);
@@ -2318,7 +2321,7 @@ void loop() {
 		{
 			static uint32_t nTimestampSaveInterval = 0;
 
-			if ((nCurrentMillis - nTimestampSaveInterval) >= TIME_SAVE_INTERVAL) {
+			if (nCurrentMillis - nTimestampSaveInterval >= TIME_SAVE_INTERVAL) {
 				nTimestampSaveInterval = nCurrentMillis;
 
 				char cBuffer[11];
@@ -2330,11 +2333,11 @@ void loop() {
 		{
 			static uint32_t nTimelapseInterval = 0;
 
-			if ((nCurrentMillis - nTimelapseInterval) >= g_nTimelapseInterval) {
-				if ((g_nEffectiveStartTimelapse != g_nEffectiveStopTimelapse) &&	// Check if either the timelapse start time and stop time is not the same
-						((g_nEffectiveStartTimelapse < g_nEffectiveStopTimelapse && currentTime.tm_hour >= g_nEffectiveStartTimelapse && currentTime.tm_hour < g_nEffectiveStopTimelapse) // Normal case: timelapse start time is before stop time (Example: from 7 AM to 7 PM)
+			if (nCurrentMillis - nTimelapseInterval >= g_nTimelapseInterval) {
+				if (g_nEffectiveStartTimelapse != g_nEffectiveStopTimelapse &&	// Check if either the timelapse start time and stop time is not the same
+						((g_nEffectiveStartTimelapse < g_nEffectiveStopTimelapse && pCurrentTime.tm_hour >= g_nEffectiveStartTimelapse && pCurrentTime.tm_hour < g_nEffectiveStopTimelapse) // Normal case: timelapse start time is before stop time (Example: from 7 AM to 7 PM)
 																																											||
-						(g_nEffectiveStartTimelapse >= g_nEffectiveStopTimelapse && (currentTime.tm_hour >= g_nEffectiveStartTimelapse || currentTime.tm_hour < g_nEffectiveStopTimelapse))	// Special case: timelapse schedule crosses midnight (Example: from 8 PM to 6 AM)
+						(g_nEffectiveStartTimelapse >= g_nEffectiveStopTimelapse && (pCurrentTime.tm_hour >= g_nEffectiveStartTimelapse || pCurrentTime.tm_hour < g_nEffectiveStopTimelapse))	// Special case: timelapse schedule crosses midnight (Example: from 8 PM to 6 AM)
 				)) {
 					if (g_nOTAProgress > 0) {
 						LOGGER(WARN, "Cannot take Snapshot for Timelapse. OTA Update in progress.");
@@ -2416,7 +2419,7 @@ void loop() {
 		{
 			uint32_t nLastActivity = g_nLastCameraActivity;
 
-			if ((millis() - nLastActivity) >= g_nSensorShutdownInterval && !g_bIsMonitoring && !g_bTakingSnapshot && !g_bTakingTimelapse && !g_bCheckingLightLeaks) {
+			if (nCurrentMillis - nLastActivity >= g_nSensorShutdownInterval && !g_bIsMonitoring && !g_bTakingSnapshot && !g_bTakingTimelapse && !g_bCheckingLightLeaks) {
 				if (digitalRead(PWDN_GPIO_NUM) == LOW)	// If is on
 					digitalWrite(PWDN_GPIO_NUM, HIGH);		// turn it off
 
