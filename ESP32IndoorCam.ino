@@ -121,14 +121,14 @@ enum SETTINGS_CODES {
 };
 
 enum MESSAGES_CODES {
-	IDX_OTA_IN_PROGRESS,
-	IDX_TAKING_SNAPSHOT,
-	IDX_TAKING_TIMELAPSE,
-	IDX_MISSING_CALIBRATION,
-	IDX_CHECKING_LIGHT_LEAKS,
-	IDX_FRAMEBUFFER_ERROR,
-	IDX_LIGHT_LEAKS_RESULT,
-	IDX_NO_SD_CANNOT_SAVE_SNAPSHOT
+	IDX_MSG_OTA_IN_PROGRESS,
+	IDX_MSG_TAKING_SNAPSHOT,
+	IDX_MSG_TAKING_TIMELAPSE,
+	IDX_MSG_MISSING_CALIBRATION,
+	IDX_MSG_CHECKING_LIGHT_LEAKS,
+	IDX_MSG_FRAMEBUFFER_ERROR,
+	IDX_MSG_LIGHT_LEAKS_RESULT,
+	IDX_MSG_NO_SD_CANNOT_SAVE_SNAPSHOT
 };
 
 enum ERR_TYPE { INFO, WARN, ERROR, DEBUG };
@@ -235,6 +235,7 @@ private:
 				return RESPONSE_TRY_AGAIN;
 
 			g_nLastCameraActivity = millis();
+			g_bIsMonitoring = true;
 
 			if (_frame.fb->format != PIXFORMAT_JPEG) {
 				if (!frame2jpg(_frame.fb, 80, &_jpg_buf, &_jpg_buf_len)) {
@@ -345,7 +346,6 @@ bool SafeSDAccess(std::function<void()> fn) {
 
 	if (!bIsSDInit) {
 		bIsSDInit = SD_MMC.begin("/sdcard", true);
-
 		if (!bIsSDInit)
 			return false;
 	}
@@ -990,7 +990,7 @@ void setup() {
 			g_nEffectiveStartTimelapse = atoi(cBuffer) % 24;					// Stores the effective light start hour, converting hour 24 to 0 (midnight)
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// TIMELAPSE STOP HOUR
-			g_nEffectiveStopTimelapse = atoi(cBuffer) % 24;					 // Stores the effective light start hour, converting hour 24 to 0 (midnight)
+			g_nEffectiveStopTimelapse = atoi(cBuffer) % 24;						// Stores the effective light start hour, converting hour 24 to 0 (midnight)
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// TIMELAPSE CAPTURE INTERVAL
 			g_nTimelapseInterval = atoi(cBuffer);
@@ -1222,9 +1222,8 @@ void setup() {
 					snprintf(cPath, sizeof(cPath), "/%s", pRequest->getParam("folder")->value().c_str());
 
 					File pWorkingDirectory = SD_MMC.open(cPath);
-					File pFile = pWorkingDirectory.openNextFile();
 
-					while (pFile) {
+					while (File pFile = pWorkingDirectory.openNextFile()) {
 						if (!pFile.isDirectory()) {
 							if (!bFirst)
 								pResponseStream->print(":");
@@ -1237,11 +1236,10 @@ void setup() {
 						}
 
 						pFile.close();
-
-						pFile = pWorkingDirectory.openNextFile();
 					}
 
 					pWorkingDirectory.close();
+
 					pRequest->send(pResponseStream);
 				})) {
 					pRequest->send(500, "text/plain", "NO_SD");
@@ -1257,9 +1255,8 @@ void setup() {
 					snprintf(cPath, sizeof(cPath), "/%s", pRequest->getParam("folder")->value().c_str());
 
 					File pWorkingDirectory = SD_MMC.open(cPath);
-					File pFile = pWorkingDirectory.openNextFile();
 
-					while (pFile) {
+					while (File pFile = pWorkingDirectory.openNextFile()) {
 						if (!pFile.isDirectory()) {
 							snprintf(cFilePath, sizeof(cFilePath), "%s", pFile.path());
 
@@ -1271,11 +1268,12 @@ void setup() {
 						} else {
 							pFile.close();
 						}
-
-						pFile = pWorkingDirectory.openNextFile();
 					}
 
 					pWorkingDirectory.close();
+
+					if (pRequest->getParam("folder")->value() == "timelapse")
+						g_nTimelapseCounter = 0;
 
 					char cDeletedFileCount[12];
 					snprintf(cDeletedFileCount, sizeof(cDeletedFileCount), "%u", nDeleteFilesCount);
@@ -1889,7 +1887,7 @@ void setup() {
 					}
 				}
 				// =============== PECENTAGE OF MINIMUM LIGHT LEVEL THRESHOLD =============== //
-				if (const AsyncWebParameter* pParam = pRequest->getParam("mllt")) {
+				if (const AsyncWebParameter* pParam = pRequest->getParam("mllct")) {
 					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_nPercentageOfMinimumLightLevelThreshold) {
@@ -1994,10 +1992,8 @@ void setup() {
 					SetSensorConfig(g_pSensorStatus.framesize);	// Monitoring Frame Size
 
 				AsyncJpegStreamResponse* pResponse = new AsyncJpegStreamResponse();
-				if (!pResponse) {
-					g_bIsMonitoring = false;
+				if (!pResponse)
 					return;
-				}
 
 				pResponse->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
@@ -2013,13 +2009,13 @@ void setup() {
 				char cFilename[35] = { 0 };
 
 				if (g_nOTAProgress > 0)
-					SET_BIT_TO_MASK(nFailureCodeMask, IDX_OTA_IN_PROGRESS);
+					SET_BIT_TO_MASK(nFailureCodeMask, IDX_MSG_OTA_IN_PROGRESS);
 
 				if (g_bTakingTimelapse)
-					SET_BIT_TO_MASK(nFailureCodeMask, IDX_TAKING_TIMELAPSE);
+					SET_BIT_TO_MASK(nFailureCodeMask, IDX_MSG_TAKING_TIMELAPSE);
 
 				if (g_bCheckingLightLeaks)
-					SET_BIT_TO_MASK(nFailureCodeMask, IDX_CHECKING_LIGHT_LEAKS);
+					SET_BIT_TO_MASK(nFailureCodeMask, IDX_MSG_CHECKING_LIGHT_LEAKS);
 
 				if (nFailureCodeMask == 0) {
 					if (!SafeSDAccess([&]() {
@@ -2051,7 +2047,7 @@ void setup() {
 
 						camera_fb_t* pCameraFrameBuffer = esp_camera_fb_get();
 						if (!pCameraFrameBuffer)
-							SET_BIT_TO_MASK(nFailureCodeMask, IDX_FRAMEBUFFER_ERROR);
+							SET_BIT_TO_MASK(nFailureCodeMask, IDX_MSG_FRAMEBUFFER_ERROR);
 
 						if (nFailureCodeMask == 0) {
 							struct tm pCurrentTime;
@@ -2099,7 +2095,7 @@ void setup() {
 							g_bTakingSnapshot = false;
 						}
 					})) {
-						SET_BIT_TO_MASK(nFailureCodeMask, IDX_NO_SD_CANNOT_SAVE_SNAPSHOT);
+						SET_BIT_TO_MASK(nFailureCodeMask, IDX_MSG_NO_SD_CANNOT_SAVE_SNAPSHOT);
 					}
 				}
 
@@ -2129,24 +2125,24 @@ void setup() {
 				bool bLightLeaks = false;
 
 				if (g_nOTAProgress > 0)
-					SET_BIT_TO_MASK(nFailureCodeMask, IDX_OTA_IN_PROGRESS);
+					SET_BIT_TO_MASK(nFailureCodeMask, IDX_MSG_OTA_IN_PROGRESS);
 
 				if (g_bTakingSnapshot)
-					SET_BIT_TO_MASK(nFailureCodeMask, IDX_TAKING_SNAPSHOT);
+					SET_BIT_TO_MASK(nFailureCodeMask, IDX_MSG_TAKING_SNAPSHOT);
 
 				if (g_bTakingTimelapse)
-					SET_BIT_TO_MASK(nFailureCodeMask, IDX_TAKING_TIMELAPSE);
+					SET_BIT_TO_MASK(nFailureCodeMask, IDX_MSG_TAKING_TIMELAPSE);
 
 				if (g_nMinimumLightFrameBufferSize == 0)
-					SET_BIT_TO_MASK(nFailureCodeMask, IDX_MISSING_CALIBRATION);
+					SET_BIT_TO_MASK(nFailureCodeMask, IDX_MSG_MISSING_CALIBRATION);
 
 				if (nFailureCodeMask == 0)
 					bLightLeaks = GetLightLevel() > (uint32_t)(g_nMinimumLightFrameBufferSize) * (100 + g_nPercentageOfMinimumLightLevelThreshold) / 100;
 
 				if (bLightLeaks)
-					SET_BIT_TO_MASK(nFailureCodeMask, IDX_LIGHT_LEAKS_RESULT);
+					SET_BIT_TO_MASK(nFailureCodeMask, IDX_MSG_LIGHT_LEAKS_RESULT);
 				else
-					SET_BIT_TO_MASK(nSuccessCodeMask, IDX_LIGHT_LEAKS_RESULT);
+					SET_BIT_TO_MASK(nSuccessCodeMask, IDX_MSG_LIGHT_LEAKS_RESULT);
 
 				char cBuffer[47];
 				//ABC00000000000000000000:00000000000000000000:0 + null terminator
@@ -2321,7 +2317,7 @@ void loop() {
 		{
 			static uint32_t nTimestampSaveInterval = 0;
 
-			if (nCurrentMillis - nTimestampSaveInterval >= TIME_SAVE_INTERVAL) {
+			if (nCurrentMillis - nTimestampSaveInterval >= TIME_SAVE_INTERVAL && g_nOTAProgress <= 0) {
 				nTimestampSaveInterval = nCurrentMillis;
 
 				char cBuffer[11];
