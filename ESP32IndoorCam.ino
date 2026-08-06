@@ -397,19 +397,29 @@ void WriteToSD(const char* szFileName, const char* szBuffer, bool bAppend) {
 	});
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Description: Performs an atomic file update by writing to a temporary file, verifying data integrity via readback comparison, and swapping filenames to prevent corruption.
+// Description: Performs an atomic file update using dynamic heap verification. Writes data to a temporary file, validates output length and content integrity against the payload, and replaces the target file upon success.
 // Arguments: szFileName (const char*) - Final target destination path, szBuffer (const char*) - Full data payload buffer to safely persist.
 void WriteToSDAtomic(const char* szFileName, const char* szBuffer) {
 	SafeSDAccess([&]() {
 		char cTempFileName[64];
 		snprintf(cTempFileName, sizeof(cTempFileName), "%s.atomic", szFileName);
 
+		if (SD_MMC.exists(cTempFileName))
+			SD_MMC.remove(cTempFileName);
+
 		File pTempFile = SD_MMC.open(cTempFileName, FILE_WRITE);
 		if (!pTempFile)
 			return;
 
-		pTempFile.print(szBuffer);
+		size_t nDataLen = strlen(szBuffer);
+		size_t nBytesWritten = pTempFile.print(szBuffer);
+		pTempFile.flush();
 		pTempFile.close();
+
+		if (nBytesWritten != nDataLen) {
+			SD_MMC.remove(cTempFileName);
+			return;
+		}
 
 		File pFile = SD_MMC.open(cTempFileName, FILE_READ);
 		if (!pFile) {
@@ -417,18 +427,33 @@ void WriteToSDAtomic(const char* szFileName, const char* szBuffer) {
 			return;
 		}
 
-		char cContent[strlen(szBuffer) + 1] = {};
-		pFile.readBytes(cContent, sizeof(cContent) - 1);
-
-		pFile.close();
-
-		if (strcmp(cContent, szBuffer) != 0) {
+		if (pFile.size() != nDataLen) {
+			pFile.close();
 			SD_MMC.remove(cTempFileName);
 			return;
 		}
 
-		SD_MMC.remove(szFileName);
-		SD_MMC.rename(cTempFileName, szFileName);
+		char* cContent = (char*)malloc(nDataLen + 1);
+		if (!cContent) {
+			pFile.close();
+			SD_MMC.remove(cTempFileName);
+			return;
+		}
+
+		size_t nBytesRead = pFile.readBytes(cContent, nDataLen);
+		cContent[nBytesRead] = '\0';
+		pFile.close();
+
+		bool bMatches = (nBytesRead == nDataLen) && (strcmp(cContent, szBuffer) == 0);
+		free(cContent);
+
+		if (!bMatches) {
+			SD_MMC.remove(cTempFileName);
+			return;
+		}
+
+		if (!SD_MMC.rename(cTempFileName, szFileName))
+			SD_MMC.remove(cTempFileName);
 	});
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -595,7 +620,7 @@ void Task_WiFiReconnect(void*) {
 				strncpy(cFinalHostname, SECRET_ACCESSPOINT_NAME, sizeof(cFinalHostname) - 1);
 				cFinalHostname[sizeof(cFinalHostname) - 1] = '\0';
 
-				while (!bNameFound && nDeviceIndex < UINT8_MAX) {	// Check if is DNS name is taken, until found a free one
+				while (!bNameFound && nDeviceIndex < 64) {	// Check if is DNS name is taken, until found a free one
 					LOGGER(INFO, "Checking if hostname '%s.local' is already taken...", cFinalHostname);
 
 					IPAddress pDuplicateIP = MDNS.queryHost(cFinalHostname, 250);
@@ -2197,8 +2222,8 @@ void setup() {
 					<body>
 						<card_header>
 							<cnt>WiFi</cnt>
-							<cnt>SSID WiFi:<input type=text id=ssid></cnt>
-							<cnt>Contraseña WiFi:<input type=text id=ssidpwd></cnt>
+							<cnt>SSID WiFi:<input maxlength=31 type=text id=ssid></cnt>
+							<cnt>Contraseña WiFi:<input maxlength=31 type=text id=ssidpwd></cnt>
 							<cnt><button onclick=SendAction('update','ssid',GetValue('ssid'),'ssidpwd',GetValue('ssidpwd'))>Actualizar</button></cnt>
 						</card_header>
 					</body>
