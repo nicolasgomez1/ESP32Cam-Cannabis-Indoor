@@ -171,6 +171,7 @@ private:
 	size_t _index;
 	size_t _jpg_buf_len;
 	uint8_t* _jpg_buf;
+	uint32_t _tryAgainSince;
 
 public:
 	AsyncJpegStreamResponse() {
@@ -183,6 +184,7 @@ public:
 		_index = 0;
 		_jpg_buf_len = 0;
 		_jpg_buf = nullptr;
+		_tryAgainSince = 0;
 
 		memset(&_frame, 0, sizeof(camera_frame_t));
 	}
@@ -225,8 +227,16 @@ private:
 			if (nMaxLen < 64)
 				return RESPONSE_TRY_AGAIN;
 
-			if (g_nOTAProgress > 0 || g_bTakingSnapshot || g_bTakingTimelapse || g_bCheckingLightLeaks)
+			if (g_nOTAProgress > 0 || g_bTakingSnapshot || g_bTakingTimelapse || g_bCheckingLightLeaks) {
+				if (_tryAgainSince == 0)
+					_tryAgainSince = millis();
+				else if (millis() - _tryAgainSince > 10000)
+					return 0;
+
 				return RESPONSE_TRY_AGAIN;
+			}
+
+			_tryAgainSince = 0;
 
 			_frame.index = 0;
 			_frame.fb = esp_camera_fb_get();
@@ -1207,6 +1217,9 @@ void setup() {
 
 	// Request handler
 	g_pWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest* pRequest) {
+		if (pRequest->client())
+			pRequest->client()->setRxTimeout(10);
+
 		const AsyncWebParameter* pParamAction = pRequest->getParam("action");
 		if (pParamAction) {
 			if (pParamAction->value() == "restart") {
