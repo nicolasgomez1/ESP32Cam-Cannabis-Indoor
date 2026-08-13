@@ -42,6 +42,7 @@
 // Pins (Using an NodeMCU ESP32-CAM (OV3660))
 #define PWDN_GPIO_NUM 32
 #define RESET_GPIO_NUM -1
+
 #define XCLK_GPIO_NUM 0
 #define SIOD_GPIO_NUM 26
 #define SIOC_GPIO_NUM 27
@@ -54,6 +55,7 @@
 #define Y4_GPIO_NUM 19
 #define Y3_GPIO_NUM 18
 #define Y2_GPIO_NUM 5
+
 #define VSYNC_GPIO_NUM 25
 #define HREF_GPIO_NUM 23
 #define PCLK_GPIO_NUM 22
@@ -966,7 +968,6 @@ void setup() {
 	g_pCameraConfig.pin_reset = RESET_GPIO_NUM;
 
 	g_pCameraConfig.pin_xclk = XCLK_GPIO_NUM;
-
 	g_pCameraConfig.pin_sccb_sda = SIOD_GPIO_NUM;
 	g_pCameraConfig.pin_sccb_scl = SIOC_GPIO_NUM;
 
@@ -980,9 +981,7 @@ void setup() {
 	g_pCameraConfig.pin_d7 = Y9_GPIO_NUM;
 
 	g_pCameraConfig.pin_vsync = VSYNC_GPIO_NUM;
-
 	g_pCameraConfig.pin_href = HREF_GPIO_NUM;
-
 	g_pCameraConfig.pin_pclk = PCLK_GPIO_NUM;
 
 	LOGGER(INFO, "Camera Pins Done!");
@@ -1503,7 +1502,7 @@ void setup() {
 					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_nTimelapseLedBrightness) {
-						if (g_nCurrentLedBrightness == g_nTimelapseLedBrightness) {	// If is currently use Flash, update it brightness in real time
+						if (g_nCurrentLedBrightness == g_nTimelapseLedBrightness) {	// If Flash is currently in use, update it brightness in real time
 							g_nCurrentLedBrightness = nNewValue;
 							ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
 						}
@@ -1518,7 +1517,7 @@ void setup() {
 					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_nMonitoringLedBrightness) {
-						if (g_nCurrentLedBrightness == g_nMonitoringLedBrightness) {	// If is currently use Flash, update it brightness in real time
+						if (g_nCurrentLedBrightness == g_nMonitoringLedBrightness) {	// If Flash is currently in use, update it brightness in real time
 							g_nCurrentLedBrightness = nNewValue;
 							ledcWrite(LED_GPIO_NUM, g_nCurrentLedBrightness);
 						}
@@ -2189,9 +2188,9 @@ void setup() {
 				pRequest->send(200, "text/plain", cBuffer);
 				return;
 			}
-		}
 
-		pRequest->send(501, "text/plain", "HTTP 501");
+			pRequest->send(400, "text/plain", "HTTP 400");
+		}
 	});
 
 	g_pWebServer.onNotFound([](AsyncWebServerRequest* pRequest) {
@@ -2204,7 +2203,6 @@ void setup() {
 						<meta name=viewport content=width=device-width,initial-scale=1.0>
 						<meta charset=utf-8>
 						<link rel=icon href=data:,>
-						<link rel='shortcut icon'href=data:,>
 						<title>Cámara</title>
 						<style>
 							body{gap:5px;margin:0;padding:5;color:#9CA6B0;display:flex;flex-wrap:wrap;font:15px Arial;flex-direction:row;background:#131314}
