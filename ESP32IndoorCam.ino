@@ -1250,6 +1250,24 @@ void setup() {
 				LOGGER(INFO, "Restarting Controller by Web command.");
 
 				bRestart = true;
+			} else if (pParamAction->value() == "sys_stats") {
+				uint32_t nFreeHeap = ESP.getFreeHeap();
+				uint32_t nTotalHeap = ESP.getHeapSize();
+				uint32_t nMinFreeHeap = ESP.getMinFreeHeap();
+				uint32_t nMaxAllocHeap = ESP.getMaxAllocHeap();
+				uint32_t nUptimeSec = millis() / 1000;
+
+				bool bHasPsram = ESP.getPsramSize() > 0;
+				uint32_t nTotalPsram = bHasPsram ? ESP.getPsramSize() : 0;
+				uint32_t nFreePsram = bHasPsram ? ESP.getFreePsram() : 0;
+
+				int32_t nWifiRssi = WiFi.RSSI();
+
+				char cBuffer[140];
+				snprintf(cBuffer, sizeof(cBuffer), "HEAP:%u/%u (Min: %u)\nMAX ALLOC:%u\nUP TIME:%u\nPSRAM:%u/%u\nRSSI:%ddBm", nFreeHeap, nTotalHeap, nMinFreeHeap, nMaxAllocHeap, nUptimeSec, nFreePsram, nTotalPsram, nWifiRssi);
+
+				pRequest->send(200, "text/plain", cBuffer);
+				return;
 			} else if (pParamAction->value() == "list") {	// This returns file list from any directory in the SD Card
 				if (!SafeSDAccess([&]() {
 					AsyncResponseStream* pResponseStream = pRequest->beginResponseStream("text/plain");
@@ -2408,8 +2426,8 @@ void loop() {
 							LOGGER(ERROR, "Frame Buffer Error. Cannot take Snapshot for Timelapse.");
 						} else {
 							SafeSDAccess([&]() {
-								char cFilename[28];
-								snprintf(cFilename, sizeof(cFilename), "/timelapse/capture%05d.jpg", g_nTimelapseCounter);
+								char cFilename[39];
+								snprintf(cFilename, sizeof(cFilename), "/timelapse/capture%05d_%lu.jpg", g_nTimelapseCounter, (unsigned long)pTimeNow);
 
 								File pFile = SD_MMC.open(cFilename, FILE_WRITE);
 								if (pFile) {
