@@ -20,6 +20,9 @@
 #include <esp_camera.h>
 #include <ESPAsyncWebServer.h>
 
+// TODO: Unificar fotos de timelapse e instantaneas en la misma carpeta. Pero separarlas por nombre. Así podria incluir todo en un timelapse. Solo hay que revisar las funciones del frontend. Para que ordenen las fotos en base al timestamp.
+	// Teniendo en cuenta que ahora ordeno las fotos por el timestamp... No necesito llevar un conteo de las fotos... O si? Si quiero saber el total de fotos, puedo consultar el filelist de la carpeta timelapse, suponiendo que no tenga un coste alto...
+
 /* NOTES:
 	- Default IP for AP is: 192.168.4.1
 	- Default DNS name is SECRET_ACCESSPOINT_NAME + .local (Example: ESP32Cam_Indoor.local). But in case it is taken the system going to add a subfix number to it (Example: ESP32Cam_Indoor.local).
@@ -415,6 +418,7 @@ void WriteToSDAtomic(const char* szFileName, const char* szBuffer) {
 
 		size_t nDataLen = strlen(szBuffer);
 		size_t nBytesWritten = pTempFile.print(szBuffer);
+
 		pTempFile.flush();
 		pTempFile.close();
 
@@ -435,19 +439,14 @@ void WriteToSDAtomic(const char* szFileName, const char* szBuffer) {
 			return;
 		}
 
-		char* cContent = (char*)malloc(nDataLen + 1);
-		if (!cContent) {
-			pFile.close();
-			SD_MMC.remove(cTempFileName);
-			return;
-		}
+		char cContent[nDataLen + 1];
 
 		size_t nBytesRead = pFile.readBytes(cContent, nDataLen);
 		cContent[nBytesRead] = '\0';
+
 		pFile.close();
 
 		bool bMatches = (nBytesRead == nDataLen) && (strcmp(cContent, szBuffer) == 0);
-		free(cContent);
 
 		if (!bMatches) {
 			SD_MMC.remove(cTempFileName);
@@ -837,103 +836,6 @@ size_t GetLightLevel() {
 
 	return nSize;
 }
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Description: Serializes local network configuration, hardware operational thresholds, active timelapse definitions, and the complete low-level registry matrix of the camera sensor into a single delimited string buffer.
-// Arguments: cBuffer (char*) - Destination string array, nSize (size_t) - Maximum capacity of the buffer, nOffset (size_t) - Current write position offset inside the buffer.
-void ComposeSettings(char* cBuffer, size_t nSize, size_t nOffset) {
-	//:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%s:%s", g_cSSID, g_cSSIDPWD);
-	//:0000
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)TicksToMinutes(g_nWiFiRetryConnectInterval));
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)g_bWiFiSleep);
-	//:00
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)g_pWiFiPower);
-
-	//:0000
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)TicksToSeconds(g_nSensorShutdownInterval));
-
-	//:00:00
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u:%u", (g_nEffectiveStartTimelapse == 0) ? 24 : g_nEffectiveStartTimelapse, (g_nEffectiveStopTimelapse == 0) ? 24 : g_nEffectiveStopTimelapse);
-	//:0000
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)TicksToMinutes(g_nTimelapseInterval));
-	//:00000
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_nTimelapseCounter);
-	//:000
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_nTimelapseLedBrightness);
-
-	//:000
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_nMonitoringLedBrightness);
-
-	//:00000000
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%d", g_pCameraConfig.xclk_freq_hz);
-	//:00
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)g_pCameraConfig.pixel_format);
-	//:00
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)g_pCameraConfig.frame_size);
-	//:00
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%d", g_pCameraConfig.jpeg_quality);
-	//:00
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)g_pCameraConfig.fb_count);
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)g_pCameraConfig.fb_location);
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)g_pCameraConfig.grab_mode);
-
-	//:00
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", (unsigned)g_pSensorStatus.framesize);
-	//:-0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%d", g_pSensorStatus.brightness);
-	//:-0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%d", g_pSensorStatus.contrast);
-	//:-0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%d", g_pSensorStatus.saturation);
-	//:-0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%d", g_pSensorStatus.sharpness);
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.denoise);
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.special_effect);
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.wb_mode);
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.awb);
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.awb_gain);
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.aec);
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.aec2);
-	//:-0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%d", g_pSensorStatus.ae_level);
-	//:0000
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.aec_value);
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.agc);
-	//:00
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.agc_gain);
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.gainceiling);
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.bpc);
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.wpc);
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.raw_gma);
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.lenc);
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.hmirror);
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.vflip);
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.dcw);
-	//:0
-	nOffset += snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_pSensorStatus.colorbar);
-
-	//:000 + null terminator
-	snprintf(cBuffer + nOffset, nSize - nOffset, ":%u", g_nPercentageOfMinimumLightLevelThreshold);
-}
 
 void setup() {
 	esp_reset_reason_t pReason = esp_reset_reason();
@@ -1009,38 +911,38 @@ void setup() {
 			g_cSSIDPWD[sizeof(g_cSSIDPWD) - 1] = '\0';
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// WIFI RETRY CONNECT INTERVAL
-			g_nWiFiRetryConnectInterval = atoi(cBuffer);
+			g_nWiFiRetryConnectInterval = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// WIFI SLEEP
-			g_bWiFiSleep = atoi(cBuffer);
+			g_bWiFiSleep = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// WIFI TRANSMIT POWER
 			g_pWiFiPower = (wifi_power_t)atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// INTERVAL FROM LAST WEB CONNECTION TO SHUTDOWN THE SENSOR & FLASH LED
-			g_nSensorShutdownInterval = atoi(cBuffer);
+			g_nSensorShutdownInterval = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// TIMELAPSE START HOUR
-			g_nEffectiveStartTimelapse = atoi(cBuffer) % 24;					// Stores the effective light start hour, converting hour 24 to 0 (midnight)
+			g_nEffectiveStartTimelapse = std::atoi(cBuffer) % 24;					// Stores the effective light start hour, converting hour 24 to 0 (midnight)
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// TIMELAPSE STOP HOUR
-			g_nEffectiveStopTimelapse = atoi(cBuffer) % 24;						// Stores the effective light start hour, converting hour 24 to 0 (midnight)
+			g_nEffectiveStopTimelapse = std::atoi(cBuffer) % 24;						// Stores the effective light start hour, converting hour 24 to 0 (midnight)
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// TIMELAPSE CAPTURE INTERVAL
-			g_nTimelapseInterval = atoi(cBuffer);
+			g_nTimelapseInterval = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// TIMELAPSE CAPTURES COUNTER
-			g_nTimelapseCounter = atoi(cBuffer);
+			g_nTimelapseCounter = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// TIMELAPSE FLASH LED BRIGHTNESS
-			g_nTimelapseLedBrightness = atoi(cBuffer);
+			g_nTimelapseLedBrightness = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// MONITORING FLASH LED BRIGHTNESS
-			g_nMonitoringLedBrightness = atoi(cBuffer);
+			g_nMonitoringLedBrightness = std::atoi(cBuffer);
 
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// CAMERA MASTER CLOCK (XCLK)
-			g_pCameraConfig.xclk_freq_hz = atoi(cBuffer);
+			g_pCameraConfig.xclk_freq_hz = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			g_pCameraConfig.ledc_timer = LEDC_TIMER_0;			// XCLK GENERATOR SETUP (WARNING: Hardcode value)
 			g_pCameraConfig.ledc_channel = LEDC_CHANNEL_0;	// XCLK GENERATOR SETUP (WARNING: Hardcode value)
@@ -1052,11 +954,11 @@ void setup() {
 			g_pCameraConfig.frame_size = (framesize_t)atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// IMAGE COMPRESSION LEVEL
-			g_pCameraConfig.jpeg_quality = atoi(cBuffer);
-			g_pSensorStatus.quality = atoi(cBuffer);	// Just in case
+			g_pCameraConfig.jpeg_quality = std::atoi(cBuffer);
+			g_pSensorStatus.quality = std::atoi(cBuffer);	// Just in case
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// FRAME BUFFERS COUNT
-			g_pCameraConfig.fb_count = atoi(cBuffer);
+			g_pCameraConfig.fb_count = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// STORE FRAME IN
 			g_pCameraConfig.fb_location = (camera_fb_location_t)atoi(cBuffer);
@@ -1075,82 +977,82 @@ void setup() {
 			g_pSensorStatus.framesize = (framesize_t)atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// BRIGHTNESS LEVEL
-			g_pSensorStatus.brightness = atoi(cBuffer);
+			g_pSensorStatus.brightness = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// CONTRAST LEVEL
-			g_pSensorStatus.contrast = atoi(cBuffer);
+			g_pSensorStatus.contrast = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// SATURATION LEVEL
-			g_pSensorStatus.saturation = atoi(cBuffer);
+			g_pSensorStatus.saturation = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// SHARPNESS LEVEL
-			g_pSensorStatus.sharpness = atoi(cBuffer);
+			g_pSensorStatus.sharpness = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// NOISE REDUCTION LEVEL
-			g_pSensorStatus.denoise = atoi(cBuffer);
+			g_pSensorStatus.denoise = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// SPECIAL EFFECTS
-			g_pSensorStatus.special_effect = atoi(cBuffer);
+			g_pSensorStatus.special_effect = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// AUTOMATIC WHITE BALANCE PROFILE
-			g_pSensorStatus.wb_mode = atoi(cBuffer);
+			g_pSensorStatus.wb_mode = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// AUTOMATIC WHITE BALANCE
-			g_pSensorStatus.awb = atoi(cBuffer);
+			g_pSensorStatus.awb = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// AUTOMATIC WHITE BALANCE GAIN
-			g_pSensorStatus.awb_gain = atoi(cBuffer);
+			g_pSensorStatus.awb_gain = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// AUTOMATIC EXPOSURE
-			g_pSensorStatus.aec = atoi(cBuffer);
+			g_pSensorStatus.aec = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// AUTOMATIC EXPOSURE (NIGHT MODE)
-			g_pSensorStatus.aec2 = atoi(cBuffer);
+			g_pSensorStatus.aec2 = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// AUTOMATIC EXPOSURE LEVEL
-			g_pSensorStatus.ae_level = atoi(cBuffer);
+			g_pSensorStatus.ae_level = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// MANUAL EXPOSURE LEVEL
-			g_pSensorStatus.aec_value = atoi(cBuffer);
+			g_pSensorStatus.aec_value = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// AUTOMATIC GAIN
-			g_pSensorStatus.agc = atoi(cBuffer);
+			g_pSensorStatus.agc = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// AUTOMATIC GAIN LEVEL
-			g_pSensorStatus.agc_gain = atoi(cBuffer);
+			g_pSensorStatus.agc_gain = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// MAX AUTOMATIC GAIN LEVEL
 			g_pSensorStatus.gainceiling = (gainceiling_t)atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// BLACK PIXEL CANCELLATION
-			g_pSensorStatus.bpc = atoi(cBuffer);
+			g_pSensorStatus.bpc = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// WHITE PIXEL CANCELLATION
-			g_pSensorStatus.wpc = atoi(cBuffer);
+			g_pSensorStatus.wpc = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// RAW GAMMA CORRECTION
-			g_pSensorStatus.raw_gma = atoi(cBuffer);
+			g_pSensorStatus.raw_gma = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// VIGNETTE CORRECTION
-			g_pSensorStatus.lenc = atoi(cBuffer);
+			g_pSensorStatus.lenc = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// HORIZONTAL MIRRORING
-			g_pSensorStatus.hmirror = atoi(cBuffer);
+			g_pSensorStatus.hmirror = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// VERTICAL FLIP
-			g_pSensorStatus.vflip = atoi(cBuffer);
+			g_pSensorStatus.vflip = std::atoi(cBuffer);
 			//////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// DIGITAL DOWNSAMPLE
-			g_pSensorStatus.dcw = atoi(cBuffer);
+			g_pSensorStatus.dcw = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// COLOR BARS (TEST MODE)
-			g_pSensorStatus.colorbar = atoi(cBuffer);
+			g_pSensorStatus.colorbar = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// MINIMUM LIGHT LEVEL TO COMPARE WHEN CHECK FOR LIGHT LEAKS
-			g_nMinimumLightFrameBufferSize = atoi(cBuffer);
+			g_nMinimumLightFrameBufferSize = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// PERCENTAGE OF MINIMUM LIGHT LEVEL THRESHOLD TO COMPARE WHEN CHECK FOR LIGHT LEAKS
-			g_nPercentageOfMinimumLightLevelThreshold = atoi(cBuffer);
+			g_nPercentageOfMinimumLightLevelThreshold = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
 			pSettingsFile.close();
 		} else {
@@ -1184,7 +1086,7 @@ void setup() {
 
 			LOGGER(INFO, "Time file raw content: '%s', length: %d.", cBuffer, nBytesRead);
 
-			time_t nTime = strtoul(cBuffer, nullptr, 10);
+			time_t nTime = std::strtoul(cBuffer, nullptr, 10);
 
 			if (nTime > 1770000000) {	// WARNING: Hardcode check
 				SetCurrentDatetime(nTime);
@@ -1957,7 +1859,98 @@ void setup() {
 				//ABCDEF00000000000000000000
 				size_t nOffset = snprintf(cBuffer, sizeof(cBuffer), "UPDATE%llu", nSuccessCodeMask);
 
-				ComposeSettings(cBuffer, sizeof(cBuffer), nOffset);
+				//:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%s:%s", g_cSSID, g_cSSIDPWD);
+				//:0000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)TicksToMinutes(g_nWiFiRetryConnectInterval));
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_bWiFiSleep);
+				//:00
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pWiFiPower);
+
+				//:0000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)TicksToSeconds(g_nSensorShutdownInterval));
+
+				//:00:00
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u:%u", (g_nEffectiveStartTimelapse == 0) ? 24 : g_nEffectiveStartTimelapse, (g_nEffectiveStopTimelapse == 0) ? 24 : g_nEffectiveStopTimelapse);
+				//:0000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)TicksToMinutes(g_nTimelapseInterval));
+				//:00000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nTimelapseCounter);
+				//:000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nTimelapseLedBrightness);
+
+				//:000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nMonitoringLedBrightness);
+
+				//:00000000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pCameraConfig.xclk_freq_hz);
+				//:00
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.pixel_format);
+				//:00
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.frame_size);
+				//:00
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pCameraConfig.jpeg_quality);
+				//:00
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.fb_count);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.fb_location);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.grab_mode);
+
+				//:00
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pSensorStatus.framesize);
+				//:-0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pSensorStatus.brightness);
+				//:-0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pSensorStatus.contrast);
+				//:-0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pSensorStatus.saturation);
+				//:-0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pSensorStatus.sharpness);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.denoise);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.special_effect);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.wb_mode);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.awb);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.awb_gain);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.aec);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.aec2);
+				//:-0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pSensorStatus.ae_level);
+				//:0000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.aec_value);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.agc);
+				//:00
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.agc_gain);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.gainceiling);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.bpc);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.wpc);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.raw_gma);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.lenc);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.hmirror);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.vflip);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.dcw);
+				//:0
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.colorbar);
+
+				//:000 + null terminator
+				snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nPercentageOfMinimumLightLevelThreshold);
 				// ========================================================================================================================= //
 				/*
 					Response structure example: each data[X] is divided by ':'
@@ -2299,7 +2292,7 @@ void setup() {
 			LOGGER(INFO, "Updating Firmware. File: %s", strFileName.c_str());
 
 			if (pRequest->hasHeader("File-Size"))
-				nFileSize = atoi(pRequest->getHeader("File-Size")->value().c_str());
+				nFileSize = std::atoi(pRequest->getHeader("File-Size")->value().c_str());
 
 			if (!Update.begin((nFileSize > 0) ? nFileSize : UPDATE_SIZE_UNKNOWN)) {
 				g_nOTAProgress = 0;
