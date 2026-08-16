@@ -20,9 +20,6 @@
 #include <esp_camera.h>
 #include <ESPAsyncWebServer.h>
 
-// TODO: Unificar fotos de timelapse e instantaneas en la misma carpeta. Pero separarlas por nombre. Así podria incluir todo en un timelapse. Solo hay que revisar las funciones del frontend. Para que ordenen las fotos en base al timestamp.
-	// Teniendo en cuenta que ahora ordeno las fotos por el timestamp... No necesito llevar un conteo de las fotos... O si? Si quiero saber el total de fotos, puedo consultar el filelist de la carpeta timelapse, suponiendo que no tenga un coste alto...
-
 /* NOTES:
 	- Default IP for AP is: 192.168.4.1
 	- Default DNS name is SECRET_ACCESSPOINT_NAME + .local (Example: ESP32Cam_Indoor.local). But in case it is taken the system going to add a subfix number to it (Example: ESP32Cam_Indoor.local).
@@ -67,7 +64,7 @@
 
 struct LogMessage {
 	char cBuffer[LOG_QUEUE_MAX_MSG_LEN];
-	char cFileName[29];
+	char cFilePath[29];
 };
 
 typedef struct {
@@ -86,7 +83,6 @@ enum SETTINGS_CODES {
 	IDX_TL_START,
 	IDX_TL_STOP,
 	IDX_TL_INTERVAL,
-	IDX_TL_COUNTER,
 	IDX_LED_BRIGHT_TIMELAPSE,
 	IDX_LED_BRIGHT_MONITORING,
 	IDX_XCLK,
@@ -149,7 +145,6 @@ uint32_t g_nSensorShutdownInterval = 0;
 uint8_t g_nEffectiveStartTimelapse = 0;
 uint8_t g_nEffectiveStopTimelapse = 0;
 uint32_t g_nTimelapseInterval = 0;
-uint16_t g_nTimelapseCounter = 0;
 uint8_t g_nTimelapseLedBrightness = 0;
 uint8_t g_nMonitoringLedBrightness = 0;
 camera_config_t g_pCameraConfig;
@@ -481,7 +476,7 @@ void LOGGER(ERR_TYPE nType, const char* szFormat, ...) {
 	vsnprintf(pMSG.cBuffer + nOffset, sizeof(pMSG.cBuffer) - nOffset, szFormat, args);
 	va_end(args);
 
-	snprintf(pMSG.cFileName, sizeof(pMSG.cFileName), "/logs/logging_%02d_%02d_%04d.txt", pCurrentTime.tm_mday, pCurrentTime.tm_mon + 1, pCurrentTime.tm_year + 1900);
+	snprintf(pMSG.cFilePath, sizeof(pMSG.cFilePath), "/logs/logging_%02d_%02d_%04d.txt", pCurrentTime.tm_mday, pCurrentTime.tm_mon + 1, pCurrentTime.tm_year + 1900);
 
 	xQueueSend(g_pLogQueue, &pMSG, 0);
 }
@@ -502,7 +497,6 @@ void SaveSettings() {
 			pSettingsFile.println(g_nEffectiveStartTimelapse);
 			pSettingsFile.println(g_nEffectiveStopTimelapse);
 			pSettingsFile.println(g_nTimelapseInterval);
-			pSettingsFile.println(g_nTimelapseCounter);
 			pSettingsFile.println(g_nTimelapseLedBrightness);
 
 			pSettingsFile.println(g_nMonitoringLedBrightness);
@@ -705,7 +699,7 @@ void Task_LogProcessor(void*) {
 
 	for (;;) {
 		if (xQueueReceive(g_pLogQueue, &pMSG, portMAX_DELAY))
-			WriteToSD(pMSG.cFileName, pMSG.cBuffer, true);
+			WriteToSD(pMSG.cFilePath, pMSG.cBuffer, true);
 	}
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -931,9 +925,6 @@ void setup() {
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// TIMELAPSE CAPTURE INTERVAL
 			g_nTimelapseInterval = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
-			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// TIMELAPSE CAPTURES COUNTER
-			g_nTimelapseCounter = std::atoi(cBuffer);
-			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// TIMELAPSE FLASH LED BRIGHTNESS
 			g_nTimelapseLedBrightness = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
@@ -1136,10 +1127,9 @@ void setup() {
 	DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "*");
 
 	// Static files server
-	// Static serving of the logs, snapshots & timelapse folders and all the files inside of them
-	g_pWebServer.serveStatic("/logs", SD_MMC, "/logs").setCacheControl("max-age=2592000, immutable");						// Cache it by 1 month
-	g_pWebServer.serveStatic("/snapshots", SD_MMC, "/snapshots").setCacheControl("max-age=2592000, immutable");	// Cache it by 1 month
-	g_pWebServer.serveStatic("/timelapse", SD_MMC, "/timelapse").setCacheControl("max-age=2592000, immutable");	// Cache it by 1 month
+	// Static serving of the logs, captures folders and all the files inside of them
+	g_pWebServer.serveStatic("/logs", SD_MMC, "/logs").setCacheControl("max-age=2592000, immutable");					// Cache it by 1 month
+	g_pWebServer.serveStatic("/captures", SD_MMC, "/captures").setCacheControl("max-age=2592000, immutable");	// Cache it by 1 month
 
 	// Request handler
 	g_pWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest* pRequest) {
@@ -1229,9 +1219,6 @@ void setup() {
 
 					pWorkingDirectory.close();
 
-					if (pRequest->getParam("folder")->value() == "timelapse")
-						g_nTimelapseCounter = 0;
-
 					char cDeletedFileCount[12];
 					snprintf(cDeletedFileCount, sizeof(cDeletedFileCount), "%u", nDeleteFilesCount);
 
@@ -1244,12 +1231,12 @@ void setup() {
 			} else if (pParamAction->value() == "deletefile") {	// Delete files from any SD folder
 				if (!SafeSDAccess([&]() {
 					bool bSuccess = true;
-					char cPath[64];
+					char cFilePath[64];
 
-					snprintf(cPath, sizeof(cPath), "/%s/%s", pRequest->getParam("folder")->value().c_str(), pRequest->getParam("file")->value().c_str());
+					snprintf(cFilePath, sizeof(cFilePath), "/%s/%s", pRequest->getParam("folder")->value().c_str(), pRequest->getParam("file")->value().c_str());
 
-					if (SD_MMC.exists(cPath)) {
-						if (!SD_MMC.remove(cPath))
+					if (SD_MMC.exists(cFilePath)) {
+						if (!SD_MMC.remove(cFilePath))
 							bSuccess = false;
 					} else {
 						bSuccess = false;
@@ -1270,7 +1257,7 @@ void setup() {
 
 				pRequest->send(200, "text/plain", cBuffer);
 			} else if (pParamAction->value() == "refresh") {	// This is for refresh Panel values
-				char cBuffer[46];
+				char cBuffer[40];
 				time_t pTimeNow = GetLocalTimeNow();
 
 				//ABCDEFG
@@ -1285,11 +1272,8 @@ void setup() {
 				//:000
 				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nOTAProgress);
 
-				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (g_nCurrentLedBrightness > 0) ? 1 : 0);
-
-				//:00000 + null terminator
-				snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nTimelapseCounter);
+				//:0 + null terminator
+				snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (g_nCurrentLedBrightness > 0) ? 1 : 0);
 				// ========================================================================================================================= //
 				/*
 					Response structure example: each data[X] is divided by ':'
@@ -1297,7 +1281,6 @@ void setup() {
 					data[1] → Firmware Version
 					data[2] → OTA Update Progress
 					data[3] → Flash On/Off Status
-					data[4] → Timelapse Captures Counter
 				*/
 				pRequest->send(200, "text/plain", cBuffer);
 				return;
@@ -1405,16 +1388,6 @@ void setup() {
 						g_nTimelapseInterval = nNewValue;
 
 						SET_BIT_TO_MASK(nSuccessCodeMask, IDX_TL_INTERVAL);
-					}
-				}
-				// =============== TIMELAPSE CAPTURES COUNTER =============== //
-				if (const AsyncWebParameter* pParam = pRequest->getParam("timelapsecount")) {
-					nNewValue = pParam->value().toInt();
-
-					if (nNewValue != g_nTimelapseCounter) {
-						g_nTimelapseCounter = nNewValue;
-
-						SET_BIT_TO_MASK(nSuccessCodeMask, IDX_TL_COUNTER);
 					}
 				}
 				// =============== TIMELAPSE FLASH LED BRIGHTNESS =============== //
@@ -1854,7 +1827,7 @@ void setup() {
 					}
 				}
 				//////////////////////////////////////////////////
-				char cBuffer[220];
+				char cBuffer[214];
 
 				//ABCDEF00000000000000000000
 				size_t nOffset = snprintf(cBuffer, sizeof(cBuffer), "UPDATE%llu", nSuccessCodeMask);
@@ -1875,8 +1848,6 @@ void setup() {
 				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u:%u", (g_nEffectiveStartTimelapse == 0) ? 24 : g_nEffectiveStartTimelapse, (g_nEffectiveStopTimelapse == 0) ? 24 : g_nEffectiveStopTimelapse);
 				//:0000
 				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)TicksToMinutes(g_nTimelapseInterval));
-				//:00000
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nTimelapseCounter);
 				//:000
 				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nTimelapseLedBrightness);
 
@@ -1964,42 +1935,41 @@ void setup() {
 					data[7] → Timelapse Start Hour
 					data[8] → Timelapse Stop Hour
 					data[9] → Timelapse Interval
-					data[10] → Timelapse Captures Counter
-					data[11] → Timelapse Flash LED Brightness
-					data[12] → Monitoring Flash LED Brightness
-					data[13] → Camera Master Clock (XCLK)
-					data[14] → Camera Pixel Format
-					data[15] → Camera Initial & Timelapse Frame Size
-					data[16] → Camera Image Compression Level
-					data[17] → Camera Frame Buffers Count
-					data[18] → Camera Frame Buffer Location
-					data[19] → Camera Frame To Grab
-					data[20] → Sensor Monitoring Frame Size
-					data[21] → Sensor Brightness
-					data[22] → Sensor Contrast
-					data[23] → Sensor Saturation
-					data[24] → Sensor Sharpness
-					data[25] → Sensor Noise Reduction Level
-					data[26] → Sensor Special Effect
-					data[27] → Sensor Automatic White Balance Enable
-					data[28] → Sensor Automatic White Balance Profile
-					data[29] → Sensor Automatic White Balance Gain
-					data[30] → Sensor Automatic Exposure Enable
-					data[31] → Sensor Automatic Exposure (Night Mode) Enable
-					data[32] → Sensor Auto Exposure Compensation Level
-					data[33] → Sensor Manual Exposure Level
-					data[34] → Sensor Automatic Gain Enable
-					data[35] → Sensor Manual Gain Level
-					data[36] → Sensor Gain Ceiling Level
-					data[37] → Sensor Black Pixel Cancellation Enable
-					data[38] → Sensor White Pixel Cancellation Enable
-					data[39] → Sensor Raw Gamma Correction Level
-					data[40] → Sensor Vignette Correction Enable
-					data[41] → Sensor Horizontal Mirroring
-					data[42] → Sensor Vertical Flip
-					data[43] → Sensor Digital Downsample Enable
-					data[44] → Sensor Color Bars (Test Mode) Enable
-					data[45] → Percetage of Minimum Light Level for Light Leaks check
+					data[10] → Timelapse Flash LED Brightness
+					data[11] → Monitoring Flash LED Brightness
+					data[12] → Camera Master Clock (XCLK)
+					data[13] → Camera Pixel Format
+					data[14] → Camera Initial & Timelapse Frame Size
+					data[15] → Camera Image Compression Level
+					data[16] → Camera Frame Buffers Count
+					data[17] → Camera Frame Buffer Location
+					data[18] → Camera Frame To Grab
+					data[19] → Sensor Monitoring Frame Size
+					data[20] → Sensor Brightness
+					data[21] → Sensor Contrast
+					data[22] → Sensor Saturation
+					data[23] → Sensor Sharpness
+					data[24] → Sensor Noise Reduction Level
+					data[25] → Sensor Special Effect
+					data[26] → Sensor Automatic White Balance Enable
+					data[27] → Sensor Automatic White Balance Profile
+					data[28] → Sensor Automatic White Balance Gain
+					data[29] → Sensor Automatic Exposure Enable
+					data[30] → Sensor Automatic Exposure (Night Mode) Enable
+					data[31] → Sensor Auto Exposure Compensation Level
+					data[32] → Sensor Manual Exposure Level
+					data[33] → Sensor Automatic Gain Enable
+					data[34] → Sensor Manual Gain Level
+					data[35] → Sensor Gain Ceiling Level
+					data[36] → Sensor Black Pixel Cancellation Enable
+					data[37] → Sensor White Pixel Cancellation Enable
+					data[38] → Sensor Raw Gamma Correction Level
+					data[39] → Sensor Vignette Correction Enable
+					data[40] → Sensor Horizontal Mirroring
+					data[41] → Sensor Vertical Flip
+					data[42] → Sensor Digital Downsample Enable
+					data[43] → Sensor Color Bars (Test Mode) Enable
+					data[44] → Percetage of Minimum Light Level for Light Leaks check
 				*/
 				pRequest->send(200, "text/plain", cBuffer);
 
@@ -2054,7 +2024,7 @@ void setup() {
 			} else if (pParamAction->value() == "tss") {	// Take a snapshot
 				uint64_t nSuccessCodeMask = 0;
 				uint64_t nFailureCodeMask = 0;
-				char cFilename[35] = { 0 };
+				char cFilePath[27];
 
 				if (g_nOTAProgress > 0)
 					SET_BIT_TO_MASK(nFailureCodeMask, IDX_MSG_OTA_IN_PROGRESS);
@@ -2098,13 +2068,10 @@ void setup() {
 							SET_BIT_TO_MASK(nFailureCodeMask, IDX_MSG_FRAMEBUFFER_ERROR);
 
 						if (nFailureCodeMask == 0) {
-							struct tm pCurrentTime;
+							char cFilePath[27];
+							snprintf(cFilePath, sizeof(cFilePath), "/captures/s_%lu.jpg", (unsigned long)GetLocalTimeNow());
 
-							GetLocalTimeNow(&pCurrentTime);
-
-							snprintf(cFilename, sizeof(cFilename), "/snapshots/%02d_%02d_%04d-%02d_%02d_%02d.jpg", pCurrentTime.tm_mday, pCurrentTime.tm_mon + 1, pCurrentTime.tm_year + 1900, pCurrentTime.tm_hour, pCurrentTime.tm_min, pCurrentTime.tm_sec);
-
-							File pFile = SD_MMC.open(cFilename, FILE_WRITE);
+							File pFile = SD_MMC.open(cFilePath, FILE_WRITE);
 							if (pFile) {
 								bool bSaved = false;
 
@@ -2114,7 +2081,7 @@ void setup() {
 								pFile.close();
 
 								if (bSaved)
-									LOGGER(INFO, "Snapshot save to: %s", cFilename);
+									LOGGER(INFO, "Snapshot save: %s", cFilePath);
 							}
 
 							if (pCameraFrameBuffer)
@@ -2153,17 +2120,8 @@ void setup() {
 					snprintf(cBuffer, sizeof(cBuffer), "MSG%llu:%llu", nSuccessCodeMask, nFailureCodeMask);
 
 					pRequest->send(200, "text/plain", cBuffer);
-				} else if (cFilename[0] != '\0') {
-					/*char cHeaderValue[41];
-					snprintf(cHeaderValue, sizeof(cHeaderValue), "inline; filename=%s", cFilename + 11);
-
-					AsyncWebServerResponse* pResponse = pRequest->beginResponse(SD_MMC, cFilename, "image/jpeg");
-					pResponse->addHeader("Content-Disposition", cHeaderValue);
-					pResponse->addHeader("Access-Control-Expose-Headers", "Content-Disposition");
-					pResponse->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-
-					pRequest->send(pResponse);*/
-					pRequest->send(200, "text/plain", cFilename + 11);
+				} else if (cFilePath[0] != '\0') {
+					pRequest->send(200, "text/plain", cFilePath + 11);
 				}
 
 				return;
@@ -2419,10 +2377,10 @@ void loop() {
 							LOGGER(ERROR, "Frame Buffer Error. Cannot take Snapshot for Timelapse.");
 						} else {
 							SafeSDAccess([&]() {
-								char cFilename[39];
-								snprintf(cFilename, sizeof(cFilename), "/timelapse/capture%05d_%lu.jpg", g_nTimelapseCounter, (unsigned long)pTimeNow);
+								char cFilePath[27];
+								snprintf(cFilePath, sizeof(cFilePath), "/captures/t_%lu.jpg", (unsigned long)pTimeNow);
 
-								File pFile = SD_MMC.open(cFilename, FILE_WRITE);
+								File pFile = SD_MMC.open(cFilePath, FILE_WRITE);
 								if (pFile) {
 									bool bSaved = false;
 
@@ -2431,13 +2389,8 @@ void loop() {
 
 									pFile.close();
 
-									if (bSaved) {
-										g_nTimelapseCounter++;
-
-										SaveSettings();
-
-										LOGGER(INFO, "Snapshot for Timelapse save to: %s", cFilename);
-									}
+									if (bSaved)
+										LOGGER(INFO, "Snapshot for Timelapse save: %s", cFilePath);
 								}
 							});
 						}
