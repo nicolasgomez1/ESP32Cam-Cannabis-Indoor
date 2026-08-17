@@ -2068,7 +2068,6 @@ void setup() {
 							SET_BIT_TO_MASK(nFailureCodeMask, IDX_MSG_FRAMEBUFFER_ERROR);
 
 						if (nFailureCodeMask == 0) {
-							char cFilePath[27];
 							snprintf(cFilePath, sizeof(cFilePath), "/captures/s_%lu.jpg", (unsigned long)GetLocalTimeNow());
 
 							File pFile = SD_MMC.open(cFilePath, FILE_WRITE);
