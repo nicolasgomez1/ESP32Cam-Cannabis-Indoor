@@ -2120,7 +2120,7 @@ void setup() {
 
 					pRequest->send(200, "text/plain", cBuffer);
 				} else if (cFilePath[0] != '\0') {
-					pRequest->send(200, "text/plain", cFilePath + 11);
+					pRequest->send(200, "text/plain", cFilePath);
 				}
 
 				return;
