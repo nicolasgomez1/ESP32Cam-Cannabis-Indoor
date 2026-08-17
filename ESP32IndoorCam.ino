@@ -618,7 +618,7 @@ void Task_WiFiReconnect(void*) {
 				while (!bNameFound && nDeviceIndex < 64) {	// Check if is DNS name is taken, until found a free one
 					LOGGER(INFO, "Checking if hostname '%s.local' is already taken...", cFinalHostname);
 
-					IPAddress pDuplicateIP = MDNS.queryHost(cFinalHostname, 250);
+					IPAddress pDuplicateIP = MDNS.queryHost(cFinalHostname, 500);
 
 					if (pDuplicateIP != IPAddress(0, 0, 0, 0)) {
 						LOGGER(WARN, "Conflict! IP %d.%d.%d.%d is using '%s.local'.", pDuplicateIP[0], pDuplicateIP[1], pDuplicateIP[2], pDuplicateIP[3], cFinalHostname);
@@ -1248,7 +1248,7 @@ void setup() {
 				}
 
 				return;
-			} else if (pParamAction->value() == "getid") {
+			} else if (pParamAction->value() == "getid") {	// TODO: NOTE: Not used yet.
 				uint8_t nMac[6];
 				WiFi.macAddress(nMac);
 
