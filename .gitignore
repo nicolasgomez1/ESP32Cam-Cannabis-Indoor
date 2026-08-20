@@ -5,4 +5,7 @@ SD Card/settings
 SD Card/logs/*
 !SD Card/logs/.gitkeep
 
+SD Card/captures/*
+!SD Card/captures/.gitkeep
+
 Secrets.h

@@ -2210,7 +2210,7 @@ void setup() {
 									GetElement('ssid').value=data[1];
 									GetElement('ssidpwd').value=data[2];
 								}
-							}).catch(()=>{});
+							});
 						}
 
 						SendAction('update');
