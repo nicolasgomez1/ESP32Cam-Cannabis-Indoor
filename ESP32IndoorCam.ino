@@ -397,30 +397,19 @@ void WriteToSD(const char* szFileName, const char* szBuffer, bool bAppend) {
 	});
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Description: Performs an atomic file update using dynamic heap verification. Writes data to a temporary file, validates output length and content integrity against the payload, and replaces the target file upon success.
+// Description: Performs an atomic file update by writing to a temporary file, verifying data integrity via readback comparison, and swapping filenames to prevent corruption.
 // Arguments: szFileName (const char*) - Final target destination path, szBuffer (const char*) - Full data payload buffer to safely persist.
 void WriteToSDAtomic(const char* szFileName, const char* szBuffer) {
 	SafeSDAccess([&]() {
 		char cTempFileName[64];
 		snprintf(cTempFileName, sizeof(cTempFileName), "%s.atomic", szFileName);
 
-		if (SD_MMC.exists(cTempFileName))
-			SD_MMC.remove(cTempFileName);
-
 		File pTempFile = SD_MMC.open(cTempFileName, FILE_WRITE);
 		if (!pTempFile)
 			return;
 
-		size_t nDataLen = strlen(szBuffer);
-		size_t nBytesWritten = pTempFile.print(szBuffer);
-
-		pTempFile.flush();
+		pTempFile.print(szBuffer);
 		pTempFile.close();
-
-		if (nBytesWritten != nDataLen) {
-			SD_MMC.remove(cTempFileName);
-			return;
-		}
 
 		File pFile = SD_MMC.open(cTempFileName, FILE_READ);
 		if (!pFile) {
@@ -428,28 +417,18 @@ void WriteToSDAtomic(const char* szFileName, const char* szBuffer) {
 			return;
 		}
 
-		if (pFile.size() != nDataLen) {
-			pFile.close();
-			SD_MMC.remove(cTempFileName);
-			return;
-		}
-
-		char cContent[nDataLen + 1];
-
-		size_t nBytesRead = pFile.readBytes(cContent, nDataLen);
-		cContent[nBytesRead] = '\0';
+		char cContent[strlen(szBuffer) + 1] = {};
+		pFile.readBytes(cContent, sizeof(cContent) - 1);
 
 		pFile.close();
 
-		bool bMatches = (nBytesRead == nDataLen) && (strcmp(cContent, szBuffer) == 0);
-
-		if (!bMatches) {
+		if (strcmp(cContent, szBuffer) != 0) {
 			SD_MMC.remove(cTempFileName);
 			return;
 		}
 
-		if (!SD_MMC.rename(cTempFileName, szFileName))
-			SD_MMC.remove(cTempFileName);
+		SD_MMC.remove(szFileName);
+		SD_MMC.rename(cTempFileName, szFileName);
 	});
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -811,7 +790,7 @@ size_t GetLightLevel() {
 			for (size_t i = 0; i < pCameraFrameBuffer->len; i++)
 				nSum += pCameraFrameBuffer->buf[i];
 
-			nSize = (size_t)(nSum / pCameraFrameBuffer->len);
+			nSize = static_cast<size_t>(nSum / pCameraFrameBuffer->len);
 		}
 
 		esp_camera_fb_return(pCameraFrameBuffer);
@@ -1264,7 +1243,7 @@ void setup() {
 				size_t nOffset = snprintf(cBuffer, sizeof(cBuffer), "REFRESH");
 
 				//0000000000
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, "%lu", (unsigned long)pTimeNow);
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, "%lu", static_cast<unsigned long>(pTimeNow));
 
 				//:ABCDEFGHIJKLMNÑ
 				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%s", cFIRMWAREVERSION);
@@ -1673,7 +1652,7 @@ void setup() {
 					}
 				}
 				// =============== AUTOMATIC GAIN LEVEL =============== //
-				if (const AsyncWebParameter* pParam = pRequest->getParam("agcl")) {
+				if (const AsyncWebParameter* pParam = pRequest->getParam("agcl")) {	// NOTE: Limited to 62 in FrontEnd, Looks like a bug in https://github.com/espressif/esp32-camera/blob/202df95d7b1dc72e9303ad78f47b8dc9f339e6a1/sensors/ov3660.c#L555
 					nNewValue = pParam->value().toInt();
 
 					if (nNewValue != g_pSensorStatus.agc_gain) {
@@ -1835,19 +1814,19 @@ void setup() {
 				//:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD:ABCDEFGHIJKLMNÑOPQRSTUVWXYZABCD
 				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%s:%s", g_cSSID, g_cSSIDPWD);
 				//:0000
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)TicksToMinutes(g_nWiFiRetryConnectInterval));
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", TicksToMinutes(g_nWiFiRetryConnectInterval));
 				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_bWiFiSleep);
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", static_cast<unsigned>(g_bWiFiSleep));
 				//:00
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pWiFiPower);
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", static_cast<unsigned>(g_pWiFiPower));
 
 				//:0000
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)TicksToSeconds(g_nSensorShutdownInterval));
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", TicksToSeconds(g_nSensorShutdownInterval));
 
 				//:00:00
 				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u:%u", (g_nEffectiveStartTimelapse == 0) ? 24 : g_nEffectiveStartTimelapse, (g_nEffectiveStopTimelapse == 0) ? 24 : g_nEffectiveStopTimelapse);
 				//:0000
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)TicksToMinutes(g_nTimelapseInterval));
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", TicksToMinutes(g_nTimelapseInterval));
 				//:000
 				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nTimelapseLedBrightness);
 
@@ -1857,20 +1836,20 @@ void setup() {
 				//:00000000
 				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pCameraConfig.xclk_freq_hz);
 				//:00
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.pixel_format);
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", static_cast<unsigned>(g_pCameraConfig.pixel_format));
 				//:00
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.frame_size);
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", static_cast<unsigned>(g_pCameraConfig.frame_size));
 				//:00
 				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pCameraConfig.jpeg_quality);
 				//:00
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.fb_count);
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", static_cast<unsigned>(g_pCameraConfig.fb_count));
 				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.fb_location);
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", static_cast<unsigned>(g_pCameraConfig.fb_location));
 				//:0
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pCameraConfig.grab_mode);
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", static_cast<unsigned>(g_pCameraConfig.grab_mode));
 
 				//:00
-				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", (unsigned)g_pSensorStatus.framesize);
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", static_cast<unsigned>(g_pSensorStatus.framesize));
 				//:-0
 				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%d", g_pSensorStatus.brightness);
 				//:-0
@@ -2068,7 +2047,7 @@ void setup() {
 							SET_BIT_TO_MASK(nFailureCodeMask, IDX_MSG_FRAMEBUFFER_ERROR);
 
 						if (nFailureCodeMask == 0) {
-							snprintf(cFilePath, sizeof(cFilePath), "/captures/s_%lu.jpg", (unsigned long)GetLocalTimeNow());
+							snprintf(cFilePath, sizeof(cFilePath), "/captures/s_%lu.jpg", static_cast<unsigned long>(GetLocalTimeNow()));
 
 							File pFile = SD_MMC.open(cFilePath, FILE_WRITE);
 							if (pFile) {
@@ -2142,7 +2121,7 @@ void setup() {
 					SET_BIT_TO_MASK(nFailureCodeMask, IDX_MSG_MISSING_CALIBRATION);
 
 				if (nFailureCodeMask == 0)
-					bLightLeaks = GetLightLevel() > (uint32_t)(g_nMinimumLightFrameBufferSize) * (100 + g_nPercentageOfMinimumLightLevelThreshold) / 100;
+					bLightLeaks = GetLightLevel() > (static_cast<uint32_t>(g_nMinimumLightFrameBufferSize) * (100 + g_nPercentageOfMinimumLightLevelThreshold)) / 100;
 
 				if (bLightLeaks)
 					SET_BIT_TO_MASK(nFailureCodeMask, IDX_MSG_LIGHT_LEAKS_RESULT);
@@ -2325,7 +2304,7 @@ void loop() {
 				nTimestampSaveInterval = nCurrentMillis;
 
 				char cBuffer[11];
-				snprintf(cBuffer, sizeof(cBuffer), "%lu", (unsigned long)pTimeNow);
+				snprintf(cBuffer, sizeof(cBuffer), "%lu", static_cast<unsigned long>(pTimeNow));
 				WriteToSDAtomic("/time", cBuffer);	// Write current time to SD Card
 			}
 		}
@@ -2377,7 +2356,7 @@ void loop() {
 						} else {
 							SafeSDAccess([&]() {
 								char cFilePath[27];
-								snprintf(cFilePath, sizeof(cFilePath), "/captures/t_%lu.jpg", (unsigned long)pTimeNow);
+								snprintf(cFilePath, sizeof(cFilePath), "/captures/t_%lu.jpg", static_cast<unsigned long>(pTimeNow));
 
 								File pFile = SD_MMC.open(cFilePath, FILE_WRITE);
 								if (pFile) {
