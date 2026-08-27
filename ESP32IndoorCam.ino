@@ -1958,12 +1958,7 @@ void setup() {
 
 					strncpy(g_cSSIDPWD, pParamSSIDPWD->value().c_str(), sizeof(g_cSSIDPWD) - 1);
 					g_cSSIDPWD[sizeof(g_cSSIDPWD) - 1] = '\0';
-				}
 
-				if (nSuccessCodeMask != 0)	// If have some change, save new settings values
-					SaveSettings();
-
-				if (bWiFiChanges) {	// After send response to web client, Try reconnect to WiFi if is required
 					LOGGER(INFO, "Disconnecting WiFi to start connection to new SSID...");
 
 					WiFi.disconnect(false);	// First disconnect from current Network (Arg false to just disconnect the Station, not the AP)
@@ -1973,6 +1968,9 @@ void setup() {
 
 					bForceTryConnectWiFi = true;
 				}
+
+				if (nSuccessCodeMask != 0)	// If have some change, save new settings values
+					SaveSettings();
 
 				return;
 			} else if (pParamAction->value() == "stream") {
