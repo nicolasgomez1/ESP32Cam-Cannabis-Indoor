@@ -118,7 +118,8 @@ enum SETTINGS_CODES {
 	IDX_DCW_ENABLE,
 	IDX_COLORBAR_ENABLE,
 	IDX_CALIBRATE_MINIMUM_LIGHT_LEVEL,
-	IDX_MINIMUM_LIGHT_LEVEL_THRESHOLD
+	IDX_MINIMUM_LIGHT_LEVEL_THRESHOLD,
+	IDX_ALLOW_TIMELAPSE_DURING_DARK_PERIOD
 };
 
 enum MESSAGES_CODES {
@@ -151,6 +152,7 @@ camera_config_t g_pCameraConfig;
 camera_status_t g_pSensorStatus;
 uint16_t g_nMinimumLightFrameBufferSize = 0;
 uint8_t g_nPercentageOfMinimumLightLevelThreshold = 0;
+bool g_bTimelapseInDarkPeriod = false;
 
 // Internal Variables
 char cFIRMWAREVERSION[16];
@@ -516,6 +518,7 @@ void SaveSettings() {
 
 			pSettingsFile.println(g_nMinimumLightFrameBufferSize);
 			pSettingsFile.println(g_nPercentageOfMinimumLightLevelThreshold);
+			pSettingsFile.println(g_bTimelapseInDarkPeriod);
 
 			pSettingsFile.close();
 
@@ -1011,7 +1014,7 @@ void setup() {
 			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// VERTICAL FLIP
 			g_pSensorStatus.vflip = std::atoi(cBuffer);
-			//////////////////////////////////////////////////
+			///////////////////////////////////////////////////
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// DIGITAL DOWNSAMPLE
 			g_pSensorStatus.dcw = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
@@ -1024,6 +1027,9 @@ void setup() {
 			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// PERCENTAGE OF MINIMUM LIGHT LEVEL THRESHOLD TO COMPARE WHEN CHECK FOR LIGHT LEAKS
 			g_nPercentageOfMinimumLightLevelThreshold = std::atoi(cBuffer);
 			///////////////////////////////////////////////////
+			ReadFromStream(pSettingsFile, cBuffer, sizeof(cBuffer));	// ALLOW SNAPSHOT TAKING FOR TIMELAPSE DURING LIGHT OFF PERIOD
+			g_bTimelapseInDarkPeriod = std::atoi(cBuffer);
+
 			pSettingsFile.close();
 		} else {
 			LOGGER(ERROR, "Failed to open Settings file.");
@@ -1382,6 +1388,16 @@ void setup() {
 						g_nTimelapseLedBrightness = nNewValue;
 
 						SET_BIT_TO_MASK(nSuccessCodeMask, IDX_LED_BRIGHT_TIMELAPSE);
+					}
+				}
+				// =============== ALLOW TIMELAPSE DURING DARK PERIOD =============== //
+				if (const AsyncWebParameter* pParam = pRequest->getParam("adpt")) {
+					nNewValue = pParam->value().toInt();
+
+					if (nNewValue != g_bTimelapseInDarkPeriod) {
+						g_bTimelapseInDarkPeriod = nNewValue;
+
+						SET_BIT_TO_MASK(nSuccessCodeMask, IDX_ALLOW_TIMELAPSE_DURING_DARK_PERIOD);
 					}
 				}
 				// =============== MONITORING FLASH LED BRIGHTNESS =============== //
@@ -1806,7 +1822,7 @@ void setup() {
 					}
 				}
 				//////////////////////////////////////////////////
-				char cBuffer[214];
+				char cBuffer[216];
 
 				//ABCDEF00000000000000000000
 				size_t nOffset = snprintf(cBuffer, sizeof(cBuffer), "UPDATE%llu", nSuccessCodeMask);
@@ -1899,8 +1915,11 @@ void setup() {
 				//:0
 				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_pSensorStatus.colorbar);
 
-				//:000 + null terminator
-				snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nPercentageOfMinimumLightLevelThreshold);
+				//:000
+				nOffset += snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_nPercentageOfMinimumLightLevelThreshold);
+
+				//:0 + null terminator
+				snprintf(cBuffer + nOffset, sizeof(cBuffer) - nOffset, ":%u", g_bTimelapseInDarkPeriod);
 				// ========================================================================================================================= //
 				/*
 					Response structure example: each data[X] is divided by ':'
@@ -1949,6 +1968,7 @@ void setup() {
 					data[42] → Sensor Digital Downsample Enable
 					data[43] → Sensor Color Bars (Test Mode) Enable
 					data[44] → Percetage of Minimum Light Level for Light Leaks check
+					data[45] → State of Timelapse during Dark period.
 				*/
 				pRequest->send(200, "text/plain", cBuffer);
 
@@ -2311,11 +2331,11 @@ void loop() {
 			static uint32_t nTimelapseInterval = 0;
 
 			if (nCurrentMillis - nTimelapseInterval >= g_nTimelapseInterval) {
-				if (g_nEffectiveStartTimelapse != g_nEffectiveStopTimelapse &&	// Check if either the timelapse start time and stop time is not the same
+				if (g_bTimelapseInDarkPeriod || (g_nEffectiveStartTimelapse != g_nEffectiveStopTimelapse && // Check if either the timelapse start time and stop time is not the same
 						((g_nEffectiveStartTimelapse < g_nEffectiveStopTimelapse && pCurrentTime.tm_hour >= g_nEffectiveStartTimelapse && pCurrentTime.tm_hour < g_nEffectiveStopTimelapse) // Normal case: timelapse start time is before stop time (Example: from 7 AM to 7 PM)
-																																											||
-						(g_nEffectiveStartTimelapse >= g_nEffectiveStopTimelapse && (pCurrentTime.tm_hour >= g_nEffectiveStartTimelapse || pCurrentTime.tm_hour < g_nEffectiveStopTimelapse))	// Special case: timelapse schedule crosses midnight (Example: from 8 PM to 6 AM)
-				)) {
+																										||
+						(g_nEffectiveStartTimelapse >= g_nEffectiveStopTimelapse && (pCurrentTime.tm_hour >= g_nEffectiveStartTimelapse || pCurrentTime.tm_hour < g_nEffectiveStopTimelapse)))) // Special case: timelapse schedule crosses midnight (Example: from 8 PM to 6 AM)
+				) {
 					if (g_nOTAProgress > 0) {
 						LOGGER(WARN, "Cannot take Snapshot for Timelapse. OTA Update in progress.");
 					} else if (g_bTakingSnapshot) {
